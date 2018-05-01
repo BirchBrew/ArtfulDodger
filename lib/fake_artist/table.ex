@@ -1,10 +1,6 @@
 defmodule FakeArtist.Table do
   use GenServer
 
-  def new do
-    GenServer.start_link(__MODULE__, 0)
-  end
-
   def init(args) do
     {:ok, args}
   end

@@ -1,30 +1,26 @@
 defmodule FakeArtist.Hostess do
   use GenServer
 
-  def new do
-    GenServer.start_link(__MODULE__, 0)
-  end
-
-  def join_existing_table(pid, table_name) do
-    GenServer.call(pid, {:join_existing_table, table_name})
-  end
-
-  def join_new_table(pid) do
-    GenServer.call(pid, :start_new_table)
-  end
-
   def init(args) do
     {:ok, args}
   end
 
   def start_link(default) do
-    GenServer.start_link(__MODULE__, default)
+    GenServer.start_link(__MODULE__, default, name: __MODULE__)
+  end
+
+  def join_existing_table(table_name) do
+    GenServer.call(__MODULE__, {:join_existing_table, table_name})
+  end
+
+  def start_new_table() do
+    GenServer.call(__MODULE__, :start_new_table)
   end
 
   def handle_call({:join_existing_table, table_name}, _from, tables) do
-    case try_join(table_name, tables) do
-      {:ok, %{pid: pid, tables: updated_tables}} ->
-        {:reply, {:ok, pid}, updated_tables}
+    case try_join_existing(table_name, tables) do
+      {:ok, %{pid: pid}} ->
+        {:reply, {:ok, pid}, tables}
 
       {:error, message} ->
         {:reply, {:error, message}, tables}
@@ -32,20 +28,30 @@ defmodule FakeArtist.Hostess do
   end
 
   def handle_call(:start_new_table, _from, tables) do
-    case try_create(tables) do
-      {:ok, %{name: name, pid: pid, tables: updated_tables}} ->
-        {:reply, {:ok, %{name: name, pid: pid}}, updated_tables}
+    case try_join_new(tables) do
+      {:ok, updated_tables, %{name: name, pid: pid}} ->
+        {:reply, {:ok, updated_tables, %{name: name, pid: pid}}}
 
       {:error, message} ->
         {:reply, {:error, message}, tables}
     end
   end
 
-  def try_join(table_name, tables) do
+  def try_join_existing(table_name, tables) do
     if Map.has_key?(tables, table_name) do
-      {:ok, %{pid: Map.get(tables, table_name), tables: tables}}
+      {:ok, %{pid: Map.get(tables, table_name)}}
     else
       {:error, "The room doesn't exist"}
+    end
+  end
+
+  def try_join_new(tables) do
+    with {:ok, name} <- get_unique_name(tables),
+         {:ok, pid} <- create_process(),
+         tables = Map.put(tables, name, pid) do
+      {:ok, tables, %{name: name, pid: pid}}
+    else
+      _ -> {:error, "Couldn't create the room"}
     end
   end
 
@@ -79,15 +85,5 @@ defmodule FakeArtist.Hostess do
   def create_process() do
     {:ok, pid} = FakeArtist.DynamicSupervisor.start_child()
     {:ok, pid}
-  end
-
-  def try_create(tables) do
-    with {:ok, name} <- get_unique_name(tables),
-         {:ok, pid} <- create_process(),
-         tables = Map.put(tables, name, pid) do
-      {:ok, %{name: name, pid: pid, tables: tables}}
-    else
-      _ -> {:error, "Couldn't create the room"}
-    end
   end
 end
