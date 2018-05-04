@@ -39,6 +39,7 @@ defmodule FakeArtist.Hostess do
   def handle_call(:start_new_table, _from, tables) do
     case try_join_new(tables) do
       {:ok, updated_tables, %{name: name, pid: pid}} ->
+        Process.monitor(pid)
         {:reply, {:ok, %{name: name, pid: pid}}, updated_tables}
 
       {:error, message} ->
@@ -48,6 +49,16 @@ defmodule FakeArtist.Hostess do
 
   def handle_call({:get_table_pid, name}, _from, tables) do
     {:reply, Map.get(tables, name), tables}
+  end
+
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, tables) do
+    IO.puts("hostess lost connection to table")
+    # Maybe we should just have two maps? So we can go both ways in O(1)?
+    IO.inspect(tables)
+    table_name_for_pid = Enum.find(tables, fn {_, val} -> val == pid end) |> elem(0)
+    tables = Map.delete(tables, table_name_for_pid)
+    IO.inspect(tables)
+    {:noreply, tables}
   end
 
   # Helpers

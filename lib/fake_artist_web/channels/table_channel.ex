@@ -8,6 +8,7 @@ defmodule FakeArtistWeb.TableChannel do
 
   def handle_info({:after_join, table_name}, socket) do
     table_pid = FakeArtist.Hostess.get_table_pid(table_name)
+    FakeArtist.Table.add_self(table_pid)
     socket = assign(socket, :table, table_pid)
     {:noreply, socket}
   end
