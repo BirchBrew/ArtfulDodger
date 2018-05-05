@@ -1,5 +1,6 @@
 defmodule FakeArtist.Hostess do
   use GenServer
+  require Logger
 
   @chars "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
   @length_of_room_name 4
@@ -52,12 +53,12 @@ defmodule FakeArtist.Hostess do
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, tables) do
-    IO.puts("hostess lost connection to table")
+    Logger.info(fn -> "hostess lost connection to table" end)
     # Maybe we should just have two maps? So we can go both ways in O(1)?
-    IO.inspect(tables)
+    Logger.info(fn -> "tables before removal: #{inspect(tables)}" end)
     table_name_for_pid = Enum.find(tables, fn {_, val} -> val == pid end) |> elem(0)
     tables = Map.delete(tables, table_name_for_pid)
-    IO.inspect(tables)
+    Logger.info(fn -> "tables after removal: #{inspect(tables)}" end)
     {:noreply, tables}
   end
 
