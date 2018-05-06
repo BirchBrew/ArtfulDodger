@@ -55,20 +55,21 @@ type Msg
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
     | StartGame Topic
-    | StartGameError
-    | UpdateGameScreen Json.Encode.Value
+    | UpdateGame Json.Encode.Value
+    | ProgressGame Topic
+    | ChooseCategory Topic
 
 
 type alias Model =
     { messages : List String
     , phxSocket : Phoenix.Socket.Socket Msg
-    , activePlayer : String
     , currentScreen : Screen
     , tableTopic : Maybe Topic
     , tableRequest : String
     , errorText : String
     , nameTag : NameTag
     , nameTags : List NameTag
+    , players : List Player
     }
 
 
@@ -92,13 +93,13 @@ initModelCmd socketServer =
         (JoinChannel welcomeTopic)
         { messages = []
         , phxSocket = initPhxSocket socketServer
-        , activePlayer = "default"
         , currentScreen = Welcome
         , tableTopic = Nothing
         , errorText = ""
         , tableRequest = ""
         , nameTag = ""
         , nameTags = []
+        , players = []
         }
 
 
@@ -143,7 +144,32 @@ namesDecoder =
     Json.Decode.field "names" (Json.Decode.list Json.Decode.string)
 
 
-gameDecoder : Json.Decode.Decoder ()
+type alias Player =
+    { player_id : Int
+    , name : String
+    , isActive : Bool
+    , seat : Int
+    }
+
+
+playerDecoder : Json.Decode.Decoder Player
+playerDecoder =
+    Json.Decode.map4 Player
+        (Json.Decode.field "id" Json.Decode.int)
+        (Json.Decode.field "name" Json.Decode.string)
+        (Json.Decode.field "is_active" Json.Decode.bool)
+        (Json.Decode.field "seat" Json.Decode.int)
+
+
+type alias GameState =
+    { players : List Player
+    }
+
+
+gameDecoder : Json.Decode.Decoder GameState
+gameDecoder =
+    Json.Decode.map GameState
+        (Json.Decode.field "players" (Json.Decode.list playerDecoder))
 
 
 
@@ -251,9 +277,6 @@ update msg model =
                 Err error ->
                     ( model, Cmd.none )
 
-        StartGameError ->
-            ( { model | errorText = "Failed to start game" }, Cmd.none )
-
         JoinChannel topic ->
             let
                 channel =
@@ -282,24 +305,27 @@ update msg model =
             let
                 push =
                     Phoenix.Push.init "start_game" topic
-                        |> Phoenix.Push.onOk UpdateGameScreen
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
+
+                phxSocket_ =
+                    Phoenix.Socket.on "update_game" topic UpdateGame phxSocket
             in
             ( { model
-                | phxSocket = phxSocket
+                | phxSocket = phxSocket_
+                , currentScreen = Game
               }
             , Cmd.map PhoenixMsg phxCmd
             )
 
-        UpdateGameScreen raw ->
+        UpdateGame raw ->
             case Json.Decode.decodeValue gameDecoder raw of
-                Ok seats roles activeSeat ->
-                    ( { model | nameTags = nameTags }, Cmd.none )
+                Ok gameState ->
+                    ( { model | players = gameState.players }, Cmd.none )
 
                 Err error ->
-                    ( model, Cmd.none )
+                    ( { model | errorText = "failed to update game" }, Cmd.none )
 
         ChangeScreen screen ->
             ( { model | currentScreen = screen }, Cmd.none )
@@ -310,7 +336,35 @@ update msg model =
                     ( { model | nameTags = nameTags }, Cmd.none )
 
                 Err error ->
-                    ( model, Cmd.none )
+                    ( { model | errorText = "couldn't update state" }, Cmd.none )
+
+        ProgressGame topic ->
+            let
+                push =
+                    Phoenix.Push.init "progress_game" topic
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
+            in
+            ( { model
+                | phxSocket = phxSocket
+              }
+            , Cmd.map PhoenixMsg phxCmd
+            )
+
+        ChooseCategory topic ->
+            let
+                push =
+                    Phoenix.Push.init "choose_category" topic
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
+            in
+            ( { model
+                | phxSocket = phxSocket
+              }
+            , Cmd.map PhoenixMsg phxCmd
+            )
 
 
 
@@ -344,8 +398,9 @@ view model =
         Game ->
             div []
                 [ h2 [] [ text "Game:" ]
-                , nameTagView model
-                , div [] [ text model.activePlayer ]
+                , playersListView model
+                , button [ onClick (ChooseCategory (Maybe.withDefault "" model.tableTopic)) ] [ text "Choose Topic" ]
+                , button [ onClick (ProgressGame (Maybe.withDefault "" model.tableTopic)) ] [ text "Progress Game" ]
                 , div
                     []
                     [ text "That's all, folks!" ]
@@ -358,6 +413,31 @@ nameTagView model =
         [ h2 [] [ text "Painters" ]
         , ul [] <| displayNameTags model.nameTags
         ]
+
+
+playersListView : Model -> Html msg
+playersListView model =
+    div []
+        [ h2 [] [ text "Painters" ]
+        , ul [] <| displayPlayer model.players
+        ]
+
+
+displayPlayer : List Player -> List (Html.Html msg)
+displayPlayer players =
+    List.map
+        (\player ->
+            li []
+                [ text ("Name: " ++ player.name)
+                , ul
+                    []
+                    [ li [] [ text ("Player Id: " ++ (player.player_id |> toString)) ]
+                    , li [] [ text ("Seat: " ++ (player.seat |> toString)) ]
+                    , li [] [ text ("Active Player? " ++ (player.isActive |> toString)) ]
+                    ]
+                ]
+        )
+        players
 
 
 displayNameTags : List NameTag -> List (Html.Html msg)

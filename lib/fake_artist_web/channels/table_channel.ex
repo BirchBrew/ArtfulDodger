@@ -17,4 +17,19 @@ defmodule FakeArtistWeb.TableChannel do
     FakeArtist.Table.update_name_tag(socket.assigns.table, {socket.assigns.id, name})
     {:noreply, socket}
   end
+
+  def handle_in("start_game", _, socket) do
+    FakeArtist.Table.start_game(socket.assigns.table)
+    {:noreply, socket}
+  end
+
+  def handle_in("progress_game", _, socket) do
+    FakeArtist.Table.progress_game(socket.assigns.table)
+    {:noreply, socket}
+  end
+
+  def handle_in("choose_category", _, socket) do
+    FakeArtist.Table.choose_category(socket.assigns.table)
+    {:noreply, socket}
+  end
 end

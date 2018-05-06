@@ -1,5 +1,6 @@
 defmodule FakeArtist.Game do
   use GenStateMachine
+  require Logger
 
   @spec start_link(list()) :: tuple()
   def start_link(players) do
@@ -11,13 +12,21 @@ defmodule FakeArtist.Game do
     %{roles: roles, seats: seats, active_seat: active_seat}
 
     GenStateMachine.start_link(
-      Game,
+      FakeArtist.Game,
       {:game_master_chooses_topic, %{roles: roles, seats: seats, active_seat: active_seat}}
     )
   end
 
   def get_state(pid) do
     GenStateMachine.call(pid, :get_state)
+  end
+
+  def progress_game(pid) do
+    GenStateMachine.call(pid, :player_drew)
+  end
+
+  def choose_category(pid) do
+    GenStateMachine.call(pid, :game_master_chose)
   end
 
   # Callbacks
@@ -30,7 +39,7 @@ defmodule FakeArtist.Game do
        roles: roles,
        seats: seats,
        active_seat: 1,
-       remaining_turns: (length(seats) - 1) * 2 - 1
+       remaining_turns: (length(seats) - 1) * 2
      }, [{:reply, from, %{seats: seats, roles: roles, active_seat: 1}}]}
   end
 
@@ -41,13 +50,14 @@ defmodule FakeArtist.Game do
         remaining_turns: remaining_turns
       }) do
     if remaining_turns == 1 do
-      {:next_state, :vote, %{roles: roles, seats: seats}}
+      Logger.info(fn -> "Voting." end)
+      {:next_state, :vote, %{roles: roles, seats: seats, active_seat: active_seat}}
     else
       next_seat = get_next_seat(seats, active_seat)
 
       {:next_state, :player_draw,
        %{roles: roles, seats: seats, active_seat: next_seat, remaining_turns: remaining_turns - 1},
-       [{:reply, from, %{seats: seats, roles: roles, active_seat: active_seat}}]}
+       [{:reply, from, %{seats: seats, roles: roles, active_seat: next_seat}}]}
     end
   end
 

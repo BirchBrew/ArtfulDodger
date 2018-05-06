@@ -23,6 +23,14 @@ defmodule FakeArtist.Table do
     GenServer.call(pid, :start_game)
   end
 
+  def progress_game(pid) do
+    GenServer.call(pid, :progress_game)
+  end
+
+  def choose_category(pid) do
+    GenServer.call(pid, :choose_category)
+  end
+
   # Server Callbacks
   def init([name]) do
     {:ok, {%{}, name, 0, nil}}
@@ -35,9 +43,7 @@ defmodule FakeArtist.Table do
       ) do
     id_map = Map.put(id_map, id, name_tag)
 
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", %{
-      state: %{names: id_map}
-    })
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", %{names: Map.values(id_map)})
 
     {:reply, :ok, {id_map, table_name, user_count, state_pid}}
   end
@@ -51,14 +57,28 @@ defmodule FakeArtist.Table do
 
   def handle_call(:start_game, _from, {id_map, table_name, user_count, _old_state_pid}) do
     {:ok, state_pid} = Map.keys(id_map) |> FakeArtist.Game.start_link()
-
-    {:ok, %{seats: seats, active_seat: active_seat}} = FakeArtist.Game.get_state(state_pid)
-
+    %{seats: seats, active_seat: active_seat} = FakeArtist.Game.get_state(state_pid)
     players = assemble_players(seats, id_map, active_seat)
 
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{
-      players: players
-    })
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
+
+    {:reply, :ok, {id_map, table_name, user_count, state_pid}}
+  end
+
+  def handle_call(:progress_game, _from, {id_map, table_name, user_count, state_pid}) do
+    %{seats: seats, active_seat: active_seat} = FakeArtist.Game.progress_game(state_pid)
+    players = assemble_players(seats, id_map, active_seat)
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
+
+    {:reply, :ok, {id_map, table_name, user_count, state_pid}}
+  end
+
+  def handle_call(:choose_category, _from, {id_map, table_name, user_count, state_pid}) do
+    %{seats: seats, active_seat: active_seat} = FakeArtist.Game.choose_category(state_pid)
+    players = assemble_players(seats, id_map, active_seat)
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
 
     {:reply, :ok, {id_map, table_name, user_count, state_pid}}
   end
