@@ -17,7 +17,7 @@ defmodule FakeArtist.Game do
   end
 
   # Callbacks
-  def handle_event(:cast, :game_master_chose, :game_master_chooses_topic, %{
+  def handle_event({:call, from}, :game_master_chose, :game_master_chooses_topic, %{
         roles: roles,
         seats: seats
       }) do
@@ -27,10 +27,10 @@ defmodule FakeArtist.Game do
        seats: seats,
        active_seat: 1,
        remaining_turns: (length(seats) - 1) * 2 - 1
-     }}
+     }, [{:reply, from, %{seats: seats, roles: roles, active_seat: 1}}]}
   end
 
-  def handle_event(:cast, :player_drew, :player_draw, %{
+  def handle_event({:call, from}, :player_drew, :player_draw, %{
         roles: roles,
         seats: seats,
         active_seat: active_seat,
@@ -42,11 +42,12 @@ defmodule FakeArtist.Game do
       next_seat = get_next_seat(seats, active_seat)
 
       {:next_state, :player_draw,
-       %{roles: roles, seats: seats, active_seat: next_seat, remaining_turns: remaining_turns - 1}}
+       %{roles: roles, seats: seats, active_seat: next_seat, remaining_turns: remaining_turns - 1},
+       [{:reply, from, %{seats: seats, roles: roles, active_seat: active_seat}}]}
     end
   end
 
-  def handle_event({:call, from}, :get_count, state, data) do
+  def handle_event({:call, from}, :get_state, state, data) do
     {:next_state, state, data, [{:reply, from, data}]}
   end
 

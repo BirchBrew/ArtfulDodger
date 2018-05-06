@@ -54,6 +54,9 @@ type Msg
     | Table String
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
+    | StartGame Topic
+    | StartGameError
+    | UpdateGameScreen Json.Encode.Value
 
 
 type alias Model =
@@ -138,6 +141,9 @@ errorDecoder =
 namesDecoder : Json.Decode.Decoder (List String)
 namesDecoder =
     Json.Decode.field "names" (Json.Decode.list Json.Decode.string)
+
+
+gameDecoder : Json.Decode.Decoder ()
 
 
 
@@ -245,6 +251,9 @@ update msg model =
                 Err error ->
                     ( model, Cmd.none )
 
+        StartGameError ->
+            ( { model | errorText = "Failed to start game" }, Cmd.none )
+
         JoinChannel topic ->
             let
                 channel =
@@ -268,6 +277,29 @@ update msg model =
             ( { model | phxSocket = phxSocket }
             , Cmd.map PhoenixMsg phxCmd
             )
+
+        StartGame topic ->
+            let
+                push =
+                    Phoenix.Push.init "start_game" topic
+                        |> Phoenix.Push.onOk UpdateGameScreen
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
+            in
+            ( { model
+                | phxSocket = phxSocket
+              }
+            , Cmd.map PhoenixMsg phxCmd
+            )
+
+        UpdateGameScreen raw ->
+            case Json.Decode.decodeValue gameDecoder raw of
+                Ok seats roles activeSeat ->
+                    ( { model | nameTags = nameTags }, Cmd.none )
+
+                Err error ->
+                    ( model, Cmd.none )
 
         ChangeScreen screen ->
             ( { model | currentScreen = screen }, Cmd.none )
@@ -306,7 +338,7 @@ view model =
                 -- TODO replace with drawn NameTag
                 , input [ type_ "text", placeholder "enter NameTag", onInput NameTagChange ] []
                 , nameTagView model
-                , button [ onClick (ChangeScreen Game) ] [ text "go to Game" ]
+                , button [ onClick (StartGame (Maybe.withDefault "" model.tableTopic)) ] [ text "go to Game" ]
                 ]
 
         Game ->

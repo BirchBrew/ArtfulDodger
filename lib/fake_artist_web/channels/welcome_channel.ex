@@ -10,6 +10,12 @@ defmodule FakeArtistWeb.WelcomeChannel do
     {:reply, {:ok, %{table: name}}, socket}
   end
 
+  def handle_in("start_game", %{}, socket) do
+    {:ok, {}} = FakeArtist.Table.start_game(socket.assigns.table)
+
+    {:reply, {:ok, %{table: name}}, socket}
+  end
+
   def handle_in("join_table", %{"table" => name}, socket) do
     case FakeArtist.Hostess.join_existing_table(name) do
       {:ok, table_pid} ->
