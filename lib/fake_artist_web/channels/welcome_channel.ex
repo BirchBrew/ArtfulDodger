@@ -10,10 +10,9 @@ defmodule FakeArtistWeb.WelcomeChannel do
     {:reply, {:ok, %{table: name}}, socket}
   end
 
-  def handle_in("start_game", %{}, socket) do
-    {:ok, {}} = FakeArtist.Table.start_game(socket.assigns.table)
-
-    {:reply, {:ok, %{table: name}}, socket}
+  def handle_in("start_game", _, socket) do
+    FakeArtist.Table.start_game(socket.assigns.table)
+    {:noreply, socket}
   end
 
   def handle_in("join_table", %{"table" => name}, socket) do

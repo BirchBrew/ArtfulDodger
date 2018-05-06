@@ -1,3 +1,7 @@
+defmodule FakeArtist.Player do
+  defstruct(id: nil, name: nil, is_active: nil, seat: nil)
+end
+
 defmodule FakeArtist.Table do
   use GenServer
 
@@ -31,7 +35,7 @@ defmodule FakeArtist.Table do
     id_map = Map.put(id_map, id, name_tag)
 
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", %{
-      names: Map.values(id_map)
+      state: %{names: id_map}
     })
 
     {:reply, :ok, {id_map, table_name, user_count, state_pid}}
@@ -47,14 +51,21 @@ defmodule FakeArtist.Table do
   def handle_call(:start_game, _from, {id_map, table_name, user_count, _old_state_pid}) do
     {:ok, state_pid} = Map.keys(id_map) |> FakeArtist.Game.start_link()
 
-    {:ok, %{seats: seats, roles: roles, active_seat: active_seat}} =
-      FakeArtist.Game.start_game(state_pid)
+    {:ok, %{seats: seats, active_seat: active_seat}} = FakeArtist.Game.get_state(state_pid)
 
-    {:reply, {:ok, %{seats: seats, roles: roles, active_seat: active_seat}},
-     {id_map, table_name, user_count, state_pid}}
+    players = assemble_players(seats, id_map, active_seat)
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{
+      players: players
+    })
+
+    {:reply, :ok, {id_map, table_name, user_count, state_pid}}
   end
 
-  def handle_info({:DOWN, _ref, :process, _from, _reason}, {id_map, table_name, user_count}) do
+  def handle_info(
+        {:DOWN, _ref, :process, _from, _reason},
+        {id_map, table_name, user_count, _old_state_pid}
+      ) do
     IO.puts("table lost connection.")
     IO.puts("player count decreased from #{user_count} to #{user_count - 1}")
     user_count = user_count - 1
@@ -65,5 +76,19 @@ defmodule FakeArtist.Table do
     else
       {:noreply, {id_map, table_name, user_count}}
     end
+  end
+
+  @spec assemble_players(list(), map(), number()) :: list()
+  def assemble_players(seats, id_map, active_seat) do
+    seats
+    |> Enum.with_index(0)
+    |> Enum.map(fn {id, index} ->
+      %FakeArtist.Player{
+        id: id,
+        name: Map.get(id_map, id),
+        seat: index,
+        is_active: index == active_seat
+      }
+    end)
   end
 end

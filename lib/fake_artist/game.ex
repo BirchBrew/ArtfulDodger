@@ -16,6 +16,10 @@ defmodule FakeArtist.Game do
     )
   end
 
+  def get_state(pid) do
+    GenStateMachine.call(pid, :get_state)
+  end
+
   # Callbacks
   def handle_event({:call, from}, :game_master_chose, :game_master_chooses_topic, %{
         roles: roles,
@@ -60,7 +64,7 @@ defmodule FakeArtist.Game do
     {random_player, without_random_player}
   end
 
-  @spec get_roles(binary(), binary(), list()) :: tuple()
+  @spec get_roles(binary(), binary(), list()) :: map()
   defp get_roles(game_master, trickster, players) do
     roles = %{game_master => :game_master, trickster => :trickster}
     roles = for player <- players, into: roles, do: {player, :player}
