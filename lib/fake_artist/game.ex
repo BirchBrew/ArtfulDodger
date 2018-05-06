@@ -3,10 +3,10 @@ defmodule FakeArtist.Game do
 
   @spec start_link(list()) :: tuple()
   def start_link(players) do
-    {:ok, game_master, players_without_game_master} = get_random_player(players)
-    {:ok, trickster, players_without_roles} = get_random_player(players_without_game_master)
-    {:ok, roles} = get_roles(game_master, trickster, players_without_roles)
-    {:ok, seats} = get_seats(game_master, players_without_game_master)
+    {game_master, players_without_game_master} = get_random_player(players)
+    {trickster, players_without_roles} = get_random_player(players_without_game_master)
+    roles = get_roles(game_master, trickster, players_without_roles)
+    seats = get_seats(game_master, players_without_game_master)
     active_seat = 0
     %{roles: roles, seats: seats, active_seat: active_seat}
 
@@ -56,28 +56,28 @@ defmodule FakeArtist.Game do
   defp get_random_player(players) do
     random_player = Enum.random(players)
     without_random_player = List.delete(players, random_player)
-    {:ok, random_player, without_random_player}
+    {random_player, without_random_player}
   end
 
   @spec get_roles(binary(), binary(), list()) :: tuple()
   defp get_roles(game_master, trickster, players) do
     roles = %{game_master => :game_master, trickster => :trickster}
     roles = for player <- players, into: roles, do: {player, :player}
-    {:ok, roles}
+    roles
   end
 
-  @spec get_seats(binary(), list()) :: tuple()
+  @spec get_seats(binary(), list()) :: list()
   defp get_seats(game_master, players) do
     seats = [game_master] ++ Enum.shuffle(players)
-    {:ok, seats}
+    seats
   end
 
-  @spec get_next_seat(list(), number()) :: tuple()
+  @spec get_next_seat(list(), number()) :: number()
   defp get_next_seat(players, active_seat) do
     if active_seat + 1 == length(players) do
-      {:ok, 1}
+      1
     else
-      {:ok, active_seat + 1}
+      active_seat + 1
     end
   end
 end
