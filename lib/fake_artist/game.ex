@@ -4,17 +4,7 @@ defmodule FakeArtist.Game do
 
   @spec start_link(list()) :: tuple()
   def start_link(players) do
-    {game_master, players_without_game_master} = get_random_player(players)
-    {trickster, players_without_roles} = get_random_player(players_without_game_master)
-    roles = get_roles(game_master, trickster, players_without_roles)
-    seats = get_seats(game_master, players_without_game_master)
-    active_seat = 0
-    %{roles: roles, seats: seats, active_seat: active_seat}
-
-    GenStateMachine.start_link(
-      FakeArtist.Game,
-      {:game_master_chooses_topic, %{roles: roles, seats: seats, active_seat: active_seat}}
-    )
+    GenStateMachine.start_link(__MODULE__, players)
   end
 
   def get_state(pid) do
@@ -30,6 +20,15 @@ defmodule FakeArtist.Game do
   end
 
   # Callbacks
+  def init(players) do
+    {game_master, players_without_game_master} = get_random_player(players)
+    {trickster, players_without_roles} = get_random_player(players_without_game_master)
+    roles = get_roles(game_master, trickster, players_without_roles)
+    seats = get_seats(game_master, players_without_game_master)
+
+    {:ok, :game_master_chooses_topic, %{roles: roles, seats: seats, active_seat: 0}}
+  end
+
   def handle_event({:call, from}, :game_master_chose, :game_master_chooses_topic, %{
         roles: roles,
         seats: seats
@@ -83,8 +82,7 @@ defmodule FakeArtist.Game do
 
   @spec get_seats(binary(), list()) :: list()
   defp get_seats(game_master, players) do
-    seats = [game_master] ++ Enum.shuffle(players)
-    seats
+    [game_master | Enum.shuffle(players)]
   end
 
   @spec get_next_seat(list(), number()) :: number()

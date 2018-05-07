@@ -54,10 +54,10 @@ type Msg
     | Table String
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
-    | StartGame Topic
+    | StartGame
     | UpdateGame Json.Encode.Value
-    | ProgressGame Topic
-    | ChooseCategory Topic
+    | ProgressGame
+    | ChooseCategory
 
 
 type alias Model =
@@ -301,16 +301,16 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
-        StartGame topic ->
+        StartGame ->
             let
                 push =
-                    Phoenix.Push.init "start_game" topic
+                    Phoenix.Push.init "start_game" (Maybe.withDefault "" model.tableTopic)
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
 
                 phxSocket_ =
-                    Phoenix.Socket.on "update_game" topic UpdateGame phxSocket
+                    Phoenix.Socket.on "update_game" (Maybe.withDefault "" model.tableTopic) UpdateGame phxSocket
             in
             ( { model
                 | phxSocket = phxSocket_
@@ -338,10 +338,10 @@ update msg model =
                 Err error ->
                     ( { model | errorText = "couldn't update state" }, Cmd.none )
 
-        ProgressGame topic ->
+        ProgressGame ->
             let
                 push =
-                    Phoenix.Push.init "progress_game" topic
+                    Phoenix.Push.init "progress_game" (Maybe.withDefault "" model.tableTopic)
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
@@ -352,10 +352,10 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
-        ChooseCategory topic ->
+        ChooseCategory ->
             let
                 push =
-                    Phoenix.Push.init "choose_category" topic
+                    Phoenix.Push.init "choose_category" (Maybe.withDefault "" model.tableTopic)
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
@@ -392,15 +392,15 @@ view model =
                 -- TODO replace with drawn NameTag
                 , input [ type_ "text", placeholder "enter NameTag", onInput NameTagChange ] []
                 , nameTagView model
-                , button [ onClick (StartGame (Maybe.withDefault "" model.tableTopic)) ] [ text "go to Game" ]
+                , button [ onClick StartGame ] [ text "go to Game" ]
                 ]
 
         Game ->
             div []
                 [ h2 [] [ text "Game:" ]
                 , playersListView model
-                , button [ onClick (ChooseCategory (Maybe.withDefault "" model.tableTopic)) ] [ text "Choose Topic" ]
-                , button [ onClick (ProgressGame (Maybe.withDefault "" model.tableTopic)) ] [ text "Progress Game" ]
+                , button [ onClick ChooseCategory ] [ text "Choose Topic" ]
+                , button [ onClick ProgressGame ] [ text "Progress Game" ]
                 , div
                     []
                     [ text "That's all, folks!" ]
@@ -431,9 +431,9 @@ displayPlayer players =
                 [ text ("Name: " ++ player.name)
                 , ul
                     []
-                    [ li [] [ text ("Player Id: " ++ (player.player_id |> toString)) ]
-                    , li [] [ text ("Seat: " ++ (player.seat |> toString)) ]
-                    , li [] [ text ("Active Player? " ++ (player.isActive |> toString)) ]
+                    [ li [] [ text ("Player Id: " ++ toString player.player_id) ]
+                    , li [] [ text ("Seat: " ++ toString player.seat) ]
+                    , li [] [ text ("Active Player? " ++ toString player.isActive) ]
                     ]
                 ]
         )

@@ -19,7 +19,7 @@ defmodule FakeArtist.Mixfile do
   def application do
     [
       mod: {FakeArtist.Application, []},
-      extra_applications: [:logger, :runtime_tools, :gen_state_machine]
+      extra_applications: [:logger, :runtime_tools]
     ]
   end
 
