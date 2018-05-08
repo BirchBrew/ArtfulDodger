@@ -22,7 +22,8 @@ import "phoenix_html"
 
 import Elm from "./elm"
 
-const elmDiv = document.getElementById("elm-main");
-Elm.Main.embed(elmDiv, {
-  socketServer: `ws://${window.location.host}/socket/websocket`
+Elm.Main.fullscreen({
+  socketServer: `ws://${window.location.host}/socket/websocket`,
+  windowWidth: window.innerWidth,
+  windowHeight: window.innerHeight,
 });

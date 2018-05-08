@@ -1,1 +1,18 @@
 /* This file is for your main application css. */
+
+* {
+  margin: 0px;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* TODO remove this border? */
+
+svg {
+  border: 1px solid black;
+}

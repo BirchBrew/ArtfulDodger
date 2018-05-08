@@ -1,14 +1,19 @@
 module Main exposing (..)
 
 import Html exposing (Html, br, button, div, form, h2, hr, input, li, p, table, tbody, td, text, tr, ul)
-import Html.Attributes exposing (placeholder, style, type_)
+import Html.Attributes exposing (attribute, class, id, placeholder, style, type_)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Encode
+import Mouse exposing (onContextMenu)
 import Phoenix.Channel
 import Phoenix.Push
 import Phoenix.Socket
 import Platform.Cmd
+import Pointer
+import Svg exposing (Svg, polyline, svg)
+import Svg.Attributes exposing (class, fill, points, preserveAspectRatio, stroke, strokeWidth, viewBox)
+import Window
 
 
 -- Constants
@@ -19,12 +24,19 @@ welcomeTopic =
     "welcome"
 
 
+drawingWindowRatio : Int
+drawingWindowRatio =
+    50
+
+
 
 -- MAIN
 
 
 type alias Flags =
     { socketServer : String
+    , windowWidth : Int
+    , windowHeight : Int
     }
 
 
@@ -59,6 +71,11 @@ type Msg
     | ProgressGame
     | ChooseCategory
     | StartGame Json.Encode.Value
+    | Down Pointer.Event
+    | Move Pointer.Event
+    | Up Pointer.Event
+    | Resize Int Int
+    | None
 
 
 type alias Model =
@@ -72,6 +89,12 @@ type alias Model =
     , nameTags : List NameTag
     , players : List Player
     , player_id : Int
+    , mouseDown : Bool
+    , lines : List Line
+    , currentLine : Line
+    , offCanvas : Bool
+    , windowHeight : Int
+    , windowWidth : Int
     }
 
 
@@ -89,8 +112,18 @@ type alias NameTag =
     String
 
 
-initModelCmd : String -> ( Model, Cmd Msg )
-initModelCmd socketServer =
+type alias Point =
+    String
+
+
+type alias Line =
+    { color : String
+    , points : List Point
+    }
+
+
+initModelCmd : Int -> Int -> String -> ( Model, Cmd Msg )
+initModelCmd windowWidth windowHeight socketServer =
     update
         (JoinChannel welcomeTopic)
         { messages = []
@@ -103,12 +136,18 @@ initModelCmd socketServer =
         , nameTags = []
         , players = []
         , player_id = -1
+        , mouseDown = False
+        , currentLine = Line "black" []
+        , lines = []
+        , offCanvas = False
+        , windowHeight = windowHeight
+        , windowWidth = windowWidth
         }
 
 
 init : Flags -> ( Model, Cmd Msg )
-init flags =
-    initModelCmd flags.socketServer
+init { windowWidth, windowHeight, socketServer } =
+    initModelCmd windowWidth windowHeight socketServer
 
 
 initPhxSocket : String -> Phoenix.Socket.Socket Msg
@@ -124,7 +163,10 @@ initPhxSocket socketServer =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Phoenix.Socket.listen model.phxSocket PhoenixMsg
+    Sub.batch
+        [ Phoenix.Socket.listen model.phxSocket PhoenixMsg
+        , Window.resizes (\{ height, width } -> Resize height width)
+        ]
 
 
 
@@ -201,6 +243,9 @@ update msg model =
             )
 
         -- All Custom Messages:
+        None ->
+            ( model, Cmd.none )
+
         Table name ->
             ( { model | tableRequest = name }, Cmd.none )
 
@@ -378,6 +423,18 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
+        Down event ->
+            ( { model | mouseDown = True }, Cmd.none )
+
+        Move event ->
+            handleMouseMove model event
+
+        Up event ->
+            handleMouseUp model
+
+        Resize h w ->
+            ( { model | windowHeight = h, windowWidth = w }, Cmd.none )
+
 
 
 -- VIEW
@@ -408,14 +465,24 @@ view model =
                 ]
 
         Game ->
-            div []
-                [ h2 [] [ text "Game:" ]
-                , p [] [ text ("you have player id " ++ toString model.player_id) ]
-                , playersListView model
-                , choicesView model
-                , div
-                    []
-                    [ text "That's all, folks!" ]
+            div
+                [ style
+                    [ ( "height", "100%" )
+                    ]
+                ]
+                [ div
+                    [ style
+                        [ ( "height", toString (100 - drawingWindowRatio) ++ "%" )
+                        ]
+                    ]
+                    [ h2 [] [ text "Game:" ]
+                    , playersListView model
+                    , viewDrawing model
+                    , button [ onClick ChooseCategory ] [ text "Choose Topic" ]
+                    , button [ onClick ProgressGame ] [ text "Progress Game" ]
+                    , nameTagView model
+                    ]
+                , drawingSpace model
                 ]
 
 
@@ -441,6 +508,157 @@ choicesView model =
         button [ onClick ProgressGame ] [ text "Progress Game" ]
     else
         text ""
+
+
+viewDrawing : Model -> Html Msg
+viewDrawing model =
+    svg
+        [ getViewBox model
+        , preserveAspectRatio "none"
+        , Svg.Attributes.width "100px"
+        , Svg.Attributes.height "50px"
+        ]
+        (drawLines model)
+
+
+viewBoxWidth : Float
+viewBoxWidth =
+    1920
+
+
+viewBoxHeight : Float
+viewBoxHeight =
+    1080
+
+
+getViewBox : Model -> Html.Attribute msg
+getViewBox model =
+    viewBox <| "0 0 " ++ toString viewBoxWidth ++ " " ++ toString viewBoxHeight
+
+
+drawingSpace : Model -> Html Msg
+drawingSpace model =
+    svg (getDrawingSpaceAttributes model) (drawLines model)
+
+
+getDrawingSpaceAttributes : Model -> List (Html.Attribute Msg)
+getDrawingSpaceAttributes model =
+    [ style
+        [ ( "height", toString drawingWindowRatio ++ "%" )
+        , ( "width", "100%" )
+        ]
+    , getViewBox model
+    , preserveAspectRatio "none"
+
+    -- pointer capture hack to continue "globally" the event anywhere on document.
+    , attribute "onpointerdown" "event.target.setPointerCapture(event.pointerId);"
+    , onContextMenu disableContextMenu
+    ]
+        ++ maybeListenForMove model
+
+
+maybeListenForMove : Model -> List (Html.Attribute Msg)
+maybeListenForMove { mouseDown } =
+    let
+        defaultList =
+            [ Pointer.onDown Down
+            , Pointer.onUp Up
+            ]
+    in
+    case mouseDown of
+        True ->
+            Pointer.onMove Move :: defaultList
+
+        False ->
+            defaultList
+
+
+handleMouseUp : Model -> ( Model, Cmd Msg )
+handleMouseUp model =
+    case List.length model.currentLine.points of
+        -- nothing drawn, keep currentLine empty
+        0 ->
+            ( { model | mouseDown = False }, Cmd.none )
+
+        -- something was drawn, so save currentLine and start new one
+        _ ->
+            let
+                newLines =
+                    model.currentLine :: model.lines
+            in
+            ( { model | mouseDown = False, lines = newLines, currentLine = Line "black" [] }, Cmd.none )
+
+
+handleMouseMove : Model -> Pointer.Event -> ( Model, Cmd Msg )
+handleMouseMove model event =
+    case model.mouseDown of
+        True ->
+            case model.offCanvas of
+                True ->
+                    handleMouseUp { model | offCanvas = False }
+
+                False ->
+                    let
+                        deadZone =
+                            3
+
+                        ( x, y ) =
+                            event.pointer.offsetPos
+
+                        currentPos =
+                            relativePos model event
+
+                        currentLine =
+                            model.currentLine
+
+                        points =
+                            translatePos currentPos :: currentLine.points
+
+                        newCurrentLine =
+                            { currentLine | points = points }
+                    in
+                    if x < 0 || x >= toFloat model.windowWidth - deadZone || y < 0 || y >= toFloat (model.windowHeight * drawingWindowRatio // 100) - deadZone then
+                        ( { model | currentLine = newCurrentLine, offCanvas = True }, Cmd.none )
+                    else
+                        ( { model | currentLine = newCurrentLine }, Cmd.none )
+
+        False ->
+            ( model, Cmd.none )
+
+
+translatePos : ( Float, Float ) -> String
+translatePos ( x, y ) =
+    toString x ++ "," ++ toString y
+
+
+relativePos : Model -> Pointer.Event -> ( Float, Float )
+relativePos model pointerEvent =
+    let
+        ( x, y ) =
+            pointerEvent.pointer.offsetPos
+
+        normalX =
+            x / toFloat model.windowWidth * viewBoxWidth
+
+        normalY =
+            y / toFloat (model.windowHeight * drawingWindowRatio // 100) * viewBoxHeight
+    in
+    ( normalX, normalY )
+
+
+drawLines : Model -> List (Svg msg)
+drawLines { currentLine, lines } =
+    List.map (\line -> polyline [ points (pointString line.points), stroke line.color, strokeWidth "1em", fill "none" ] []) (currentLine :: lines)
+
+
+pointString : List Point -> String
+pointString points =
+    String.join " " points
+
+
+disableContextMenu : a -> Msg
+disableContextMenu event =
+    None
 
 
 nameTagView : Model -> Html msg
