@@ -60,6 +60,7 @@ defmodule FakeArtist.Table do
     %{seats: seats, active_seat: active_seat} = FakeArtist.Game.get_state(state_pid)
     players = assemble_players(seats, id_map, active_seat)
 
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "start_game", %{})
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
 
     {:reply, :ok, {id_map, table_name, user_count, state_pid}}

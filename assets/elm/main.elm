@@ -54,10 +54,11 @@ type Msg
     | Table String
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
-    | StartGame
+    | PushStartGame
     | UpdateGame Json.Encode.Value
     | ProgressGame
     | ChooseCategory
+    | StartGame Json.Encode.Value
 
 
 type alias Model =
@@ -287,6 +288,8 @@ update msg model =
 
                 phxSocket_ =
                     Phoenix.Socket.on "update" topic UpdateState phxSocket
+                        |> Phoenix.Socket.on "update_game" (Maybe.withDefault "" model.tableTopic) UpdateGame
+                        |> Phoenix.Socket.on "start_game" (Maybe.withDefault "" model.tableTopic) StartGame
             in
             ( { model | phxSocket = phxSocket_ }
             , Cmd.map PhoenixMsg phxCmd
@@ -301,23 +304,22 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
-        StartGame ->
+        PushStartGame ->
             let
                 push =
                     Phoenix.Push.init "start_game" (Maybe.withDefault "" model.tableTopic)
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
-
-                phxSocket_ =
-                    Phoenix.Socket.on "update_game" (Maybe.withDefault "" model.tableTopic) UpdateGame phxSocket
             in
             ( { model
-                | phxSocket = phxSocket_
-                , currentScreen = Game
+                | phxSocket = phxSocket
               }
             , Cmd.map PhoenixMsg phxCmd
             )
+
+        StartGame _ ->
+            ( { model | currentScreen = Game }, Cmd.none )
 
         UpdateGame raw ->
             case Json.Decode.decodeValue gameDecoder raw of
@@ -392,7 +394,7 @@ view model =
                 -- TODO replace with drawn NameTag
                 , input [ type_ "text", placeholder "enter NameTag", onInput NameTagChange ] []
                 , nameTagView model
-                , button [ onClick StartGame ] [ text "go to Game" ]
+                , button [ onClick PushStartGame ] [ text "go to Game" ]
                 ]
 
         Game ->
