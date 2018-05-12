@@ -93,6 +93,12 @@ type LittleState
     | Vote
 
 
+type Role
+    = GameMaster
+    | Trickster
+    | BasicPlayer
+
+
 type alias NameTag =
     String
 
@@ -201,7 +207,7 @@ bigStateDecoder =
                         Json.Decode.succeed Game
 
                     _ ->
-                        Debug.crash "Unknown little state"
+                        Debug.crash "Unknown big state"
             )
 
 
@@ -222,6 +228,26 @@ littleStateDecoder =
 
                     _ ->
                         Debug.crash "Unknown little state"
+            )
+
+
+roleDecoder : Json.Decode.Decoder Role
+roleDecoder =
+    Json.Decode.string
+        |> Json.Decode.andThen
+            (\str ->
+                case str of
+                    "game_master" ->
+                        Json.Decode.succeed GameMaster
+
+                    "trickster" ->
+                        Json.Decode.succeed Trickster
+
+                    "player" ->
+                        Json.Decode.succeed BasicPlayer
+
+                    _ ->
+                        Debug.crash "Unknown role"
             )
 
 
@@ -253,7 +279,7 @@ namesDecoder =
 type alias Player =
     { seat : Maybe Int
     , name : String
-    , role : String
+    , role : Role
     }
 
 
@@ -262,7 +288,7 @@ playerDecoder =
     Json.Decode.map3 Player
         (Json.Decode.field "seat" (Json.Decode.maybe Json.Decode.int))
         (Json.Decode.field "name" Json.Decode.string)
-        (Json.Decode.field "role" Json.Decode.string)
+        (Json.Decode.field "role" roleDecoder)
 
 
 type alias GameState =
@@ -528,10 +554,10 @@ view model =
                         ]
                     ]
                     [ h2 [] [ text "Game:" ]
+                    , overviewView model
                     , playersListView model
                     , viewDrawing model
                     , choicesView model
-                    , nameTagView model
                     ]
                 , drawingSpace model
                 ]
@@ -560,6 +586,24 @@ getPlayerHelper player =
 getFirst : List String -> String
 getFirst players =
     getPlayerHelper (players |> List.head)
+
+
+overviewView : Model -> Html Msg
+overviewView model =
+    div []
+        [ h2 [] [ text "Active Players:" ]
+        , ul [] <| displayActivePlayers model
+        ]
+
+
+displayActivePlayers : Model -> List (Html Msg)
+displayActivePlayers model =
+    List.map
+        (\player_id ->
+            li []
+                [ text player_id ]
+        )
+        model.state.active_players
 
 
 choicesView : Model -> Html Msg
@@ -758,7 +802,7 @@ displayPlayer players =
                 , ul
                     []
                     [ li [] [ text ("Role: " ++ toString player.role) ]
-                    , li [] [ text ("Seat: " ++ toString player.seat) ]
+                    , li [] [ text ("Seat: " ++ toString (Maybe.withDefault -1 player.seat)) ]
                     ]
                 ]
         )

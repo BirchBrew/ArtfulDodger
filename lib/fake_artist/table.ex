@@ -155,7 +155,7 @@ defmodule FakeArtist.Table do
         little_state: :draw
     }
 
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", state)
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
     {:reply, :ok, state}
   end
@@ -186,7 +186,7 @@ defmodule FakeArtist.Table do
           remaining_turns: remaining_turns - 1
       }
 
-      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", state)
+      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
       {:reply, :ok, state}
     end
@@ -241,7 +241,7 @@ defmodule FakeArtist.Table do
   @spec get_next_seat(number(), number()) :: number()
   defp get_next_seat(current_seat, player_count) do
     if current_seat + 1 == player_count do
-      0
+      1
     else
       current_seat + 1
     end
