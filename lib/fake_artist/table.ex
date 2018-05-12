@@ -101,8 +101,7 @@ defmodule FakeArtist.Table do
       ) do
     player_ids = Map.keys(players)
 
-    [game_master_id | player_ids_without_game_master] = Enum.shuffle(player_ids)
-    [trickster_id | _] = Enum.shuffle(player_ids_without_game_master)
+    [game_master_id, trickster_id | _] = Enum.shuffle(player_ids)
 
     players =
       update_player_role(players, game_master_id, :game_master)

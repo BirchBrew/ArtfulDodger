@@ -116,6 +116,7 @@ type alias Line =
 type alias Model =
     { phxSocket : Phoenix.Socket.Socket Msg
     , state : TableState
+    , playerId : String
     , tableTopic : Maybe Topic
     , tableRequest : Maybe String
     , errorText : String
@@ -125,7 +126,6 @@ type alias Model =
     , offCanvas : Bool
     , windowHeight : Int
     , windowWidth : Int
-    , playerId : String
     }
 
 
