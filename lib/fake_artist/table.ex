@@ -1,9 +1,29 @@
+defmodule FakeArtist.State do
+  defstruct(
+    big_state: :lobby,
+    little_state: :pick,
+    topic: nil,
+    category: nil,
+    active_players: [],
+    winner: nil,
+    players: %{},
+    table_name: nil,
+    remaining_turns: 0,
+    connected_computers: 0
+  )
+end
+
 defmodule FakeArtist.Player do
-  defstruct(id: nil, name: nil, is_active: nil, seat: nil)
+  defstruct(
+    seat: nil,
+    role: :player,
+    name: ""
+  )
 end
 
 defmodule FakeArtist.Table do
   use GenServer
+
   require Logger
 
   # Public API
@@ -33,126 +53,198 @@ defmodule FakeArtist.Table do
 
   # Server Callbacks
   def init([name]) do
-    {:ok, {%{}, name, 0}}
+    {:ok, %FakeArtist.State{table_name: name}}
   end
 
   def handle_call(
         {:update_name_tag, {id, name_tag}},
         _from,
-        {id_map, table_name, user_count}
+        state = %{
+          players: players,
+          table_name: table_name
+        }
       ) do
-    id_map = Map.put(id_map, id, name_tag)
+    id = to_string(id)
 
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", %{names: Map.values(id_map)})
+    players =
+      if Map.has_key?(players, id) do
+        players
+      else
+        Map.put(players, id, %FakeArtist.Player{})
+      end
 
-    {:reply, :ok, {id_map, table_name, user_count}}
+    players = update_player_name(players, id, name_tag)
+
+    state = %{state | players: players}
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+
+    {:reply, :ok, state}
   end
 
-  def handle_call(:add_self, {from_pid, _}, {id_map, table_name, user_count}) do
+  def handle_call(:add_self, {from_pid, _}, state = %{connected_computers: connected_computers}) do
     Logger.info(fn -> "started monitoring #{inspect(from_pid)}" end)
     Process.monitor(from_pid)
-    Logger.info(fn -> "player count increased from #{user_count} to #{user_count + 1}" end)
-    {:reply, :ok, {id_map, table_name, user_count + 1}}
-  end
 
-  def handle_call(:start_game, _from, {id_map, table_name, user_count}) do
-    players = Map.keys(id_map)
+    Logger.info(fn ->
+      "player count increased from #{connected_computers} to #{connected_computers + 1}"
+    end)
 
-    {game_master, players_without_game_master} = get_random_player(players)
-    {trickster, players_without_roles} = get_random_player(players_without_game_master)
-    roles = get_roles(game_master, trickster, players_without_roles)
-    seats = get_seats(game_master, players_without_game_master)
-    active_seat = 0
-    players = assemble_players(seats, id_map, active_seat)
-
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "start_game", %{})
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
-
-    {:reply, :ok,
-     {id_map, table_name, user_count, %{roles: roles, seats: seats, active_seat: active_seat}}}
+    {:reply, :ok, %{state | connected_computers: connected_computers + 1}}
   end
 
   def handle_call(
-        :progress_game,
+        :start_game,
         _from,
-        {id_map, table_name, user_count,
-         %{roles: roles, seats: seats, active_seat: active_seat, remaining_turns: remaining_turns}}
+        state = %{
+          players: players,
+          table_name: table_name
+        }
       ) do
-    if remaining_turns == 1 do
-      Logger.info(fn -> "Voting." end)
+    player_ids = Map.keys(players)
 
-      {:reply, :ok,
-       {id_map, table_name, user_count,
-        %{
-          state: "voting",
-          seats: seats,
-          active_seats: (seats |> length() |> list_up_to()) -- [0]
-        }}}
-    else
-      next_seat = get_next_seat(seats, active_seat)
-      active_seat = next_seat
-      remaining_turns = remaining_turns - 1
+    {game_master_id, player_ids_without_game_master} = get_random_player(player_ids)
+    {trickster_id, _} = get_random_player(player_ids_without_game_master)
 
-      players = assemble_players(seats, id_map, active_seat)
-      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
+    players =
+      update_player_role(players, game_master_id, :game_master)
+      |> update_player_role(trickster_id, :trickster)
 
-      {:reply, :ok,
-       {id_map, table_name, user_count,
-        %{
-          roles: roles,
-          seats: seats,
-          active_seat: active_seat,
-          remaining_turns: remaining_turns
-        }}}
-    end
+    game_master = Map.get(players, game_master_id) |> Map.put(:seat, 0)
+    players_without_game_master = Map.delete(players, game_master_id)
+
+    seats = 1..((players |> Map.keys() |> length()) - 1) |> Enum.to_list() |> Enum.shuffle()
+    players_with_seats = Enum.zip(seats, players_without_game_master)
+
+    players =
+      for(
+        {index, {player_id, player}} <- players_with_seats,
+        into: %{},
+        do: {player_id, Map.put(player, :seat, index)}
+      )
+      |> Map.new()
+
+    players = players |> Map.put(game_master_id, game_master)
+
+    state = %{
+      state
+      | big_state: :game,
+        little_state: :pick,
+        active_players: [game_master_id],
+        players: players
+    }
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+
+    {:reply, :ok, state}
   end
 
   def handle_call(
         :choose_category,
         _from,
-        {id_map, table_name, user_count, %{roles: roles, seats: seats}}
+        state = %{
+          active_players: active_players,
+          players: players,
+          table_name: table_name
+        }
       ) do
-    active_seat = 1
-    remaining_turns = (length(seats) - 1) * 2
+    state = %{
+      state
+      | active_players: get_active_players(players, active_players),
+        remaining_turns: ((players |> Map.keys() |> length()) - 1) * 2,
+        little_state: :draw
+    }
 
-    players = assemble_players(seats, id_map, active_seat)
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", state)
 
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", %{players: players})
+    {:reply, :ok, state}
+  end
 
-    {:reply, :ok,
-     {id_map, table_name, user_count,
-      %{roles: roles, seats: seats, active_seat: active_seat, remaining_turns: remaining_turns}}}
+  def handle_call(
+        :progress_game,
+        _from,
+        state = %{
+          active_players: active_players,
+          players: players,
+          remaining_turns: remaining_turns,
+          table_name: table_name
+        }
+      ) do
+    if remaining_turns == 1 do
+      Logger.info(fn -> "Voting." end)
+
+      state = %{
+        state
+        | little_state: :vote
+      }
+
+      {:reply, :ok, state}
+    else
+      state = %{
+        state
+        | active_players: get_active_players(players, active_players),
+          remaining_turns: remaining_turns - 1
+      }
+
+      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update_game", state)
+
+      {:reply, :ok, state}
+    end
   end
 
   def handle_info(
         {:DOWN, _ref, :process, _from, _reason},
-        {id_map, table_name, user_count}
+        state = %{connected_computers: connected_computers}
       ) do
     Logger.info(fn -> "table lost connection." end)
-    Logger.info(fn -> "player count decreased from #{user_count} to #{user_count - 1}" end)
 
-    user_count = user_count - 1
+    Logger.info(fn ->
+      "player count decreased from #{connected_computers} to #{connected_computers - 1}"
+    end)
 
-    if user_count == 0 do
+    if connected_computers - 1 == 0 do
       Logger.info(fn -> "suicide" end)
-      {:stop, :shutdown, {%{}, "", 0}}
+      {:stop, :shutdown, %{}}
     else
-      {:noreply, {id_map, table_name, user_count}}
+      state = %{
+        state
+        | connected_computers: connected_computers - 1
+      }
+
+      {:noreply, state}
     end
   end
 
-  @spec assemble_players(list(), map(), number()) :: list()
-  def assemble_players(seats, id_map, active_seat) do
-    seats
-    |> Enum.with_index(0)
-    |> Enum.map(fn {id, index} ->
-      %FakeArtist.Player{
-        id: id,
-        name: Map.get(id_map, id),
-        seat: index,
-        is_active: index == active_seat
-      }
-    end)
+  @spec update_player_role(map(), number(), atom()) :: map()
+  defp update_player_role(players, id, new_role) do
+    player = Map.get(players, id)
+    player_with_new_role = %{player | role: new_role}
+    Map.put(players, id, player_with_new_role)
+  end
+
+  @spec update_player_name(map(), number(), atom()) :: map()
+  defp update_player_name(players, id, new_name) do
+    player = Map.get(players, id)
+    player_with_new_name = %{player | name: new_name}
+    Map.put(players, id, player_with_new_name)
+  end
+
+  @spec get_active_players(map(), list()) :: list()
+  defp get_active_players(players, active_players) do
+    current_active_player_id = active_players |> hd()
+    current_active_player_seat = Map.get(players, current_active_player_id).seat
+    next_seat = get_next_seat(current_active_player_seat, players |> Map.keys() |> length())
+    next_id = players |> Enum.find(fn {_, player} -> player.seat == next_seat end) |> elem(0)
+    [next_id]
+  end
+
+  @spec get_next_seat(number(), number()) :: number()
+  defp get_next_seat(current_seat, player_count) do
+    if current_seat + 1 == player_count do
+      0
+    else
+      current_seat + 1
+    end
   end
 
   @spec get_random_player(list()) :: tuple()
@@ -162,29 +254,8 @@ defmodule FakeArtist.Table do
     {random_player, without_random_player}
   end
 
-  @spec get_roles(binary(), binary(), list()) :: map()
-  defp get_roles(game_master, trickster, players) do
-    roles = %{game_master => :game_master, trickster => :trickster}
-    roles = for player <- players, into: roles, do: {player, :player}
-    roles
-  end
-
-  @spec get_seats(binary(), list()) :: list()
-  defp get_seats(game_master, players) do
-    [game_master | Enum.shuffle(players)]
-  end
-
   @spec list_up_to(number()) :: list()
   def list_up_to(n) do
     Enum.to_list(0..(n - 1))
-  end
-
-  @spec get_next_seat(list(), number()) :: number()
-  defp get_next_seat(players, active_seat) do
-    if active_seat + 1 == length(players) do
-      1
-    else
-      active_seat + 1
-    end
   end
 end

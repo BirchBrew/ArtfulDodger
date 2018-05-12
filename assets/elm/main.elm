@@ -1,9 +1,11 @@
 module Main exposing (..)
 
+import Dict
 import Html exposing (Html, br, button, div, form, h2, hr, input, li, p, table, tbody, td, text, tr, ul)
 import Html.Attributes exposing (attribute, class, id, placeholder, style, type_)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
+import Json.Decode.Extra
 import Json.Encode
 import Mouse exposing (onContextMenu)
 import Phoenix.Channel
@@ -58,7 +60,6 @@ type Msg
     = PhoenixMsg (Phoenix.Socket.Msg Msg)
     | JoinChannel String
     | LeaveWelcomeChannel
-    | ChangeScreen Screen
     | RequestNewTable
     | RequestJoinTable String
     | JoinTable Json.Encode.Value
@@ -67,10 +68,8 @@ type Msg
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
     | PushStartGame
-    | UpdateGame Json.Encode.Value
     | ProgressGame
     | ChooseCategory
-    | StartGame Json.Encode.Value
     | Down Pointer.Event
     | Move Pointer.Event
     | Up Pointer.Event
@@ -78,34 +77,20 @@ type Msg
     | None
 
 
-type alias Model =
-    { messages : List String
-    , phxSocket : Phoenix.Socket.Socket Msg
-    , currentScreen : Screen
-    , tableTopic : Maybe Topic
-    , tableRequest : String
-    , errorText : String
-    , nameTag : NameTag
-    , nameTags : List NameTag
-    , players : List Player
-    , player_id : Int
-    , mouseDown : Bool
-    , lines : List Line
-    , currentLine : Line
-    , offCanvas : Bool
-    , windowHeight : Int
-    , windowWidth : Int
-    }
-
-
 type alias Topic =
     String
 
 
-type Screen
+type BigState
     = Welcome
     | Lobby
     | Game
+
+
+type LittleState
+    = Pick
+    | Draw
+    | Vote
 
 
 type alias NameTag =
@@ -122,26 +107,38 @@ type alias Line =
     }
 
 
+type alias Model =
+    { phxSocket : Phoenix.Socket.Socket Msg
+    , tableTopic : Maybe Topic
+    , tableRequest : Maybe String
+    , errorText : String
+    , mouseDown : Bool
+    , lines : List Line
+    , currentLine : Line
+    , offCanvas : Bool
+    , windowHeight : Int
+    , windowWidth : Int
+    , state : TableState
+    , playerId : Int
+    }
+
+
 initModelCmd : Int -> Int -> String -> ( Model, Cmd Msg )
 initModelCmd windowWidth windowHeight socketServer =
     update
         (JoinChannel welcomeTopic)
-        { messages = []
-        , phxSocket = initPhxSocket socketServer
-        , currentScreen = Welcome
+        { phxSocket = initPhxSocket socketServer
+        , tableRequest = Nothing
         , tableTopic = Nothing
         , errorText = ""
-        , tableRequest = ""
-        , nameTag = ""
-        , nameTags = []
-        , players = []
-        , player_id = -1
         , mouseDown = False
-        , currentLine = Line "black" []
         , lines = []
+        , currentLine = Line "black" []
         , offCanvas = False
         , windowHeight = windowHeight
         , windowWidth = windowWidth
+        , state = TableState Welcome Pick Nothing Nothing [] Nothing Dict.empty "" 0 0
+        , playerId = -1
         }
 
 
@@ -175,16 +172,72 @@ subscriptions model =
 
 
 type alias TableState =
-    { table : String
-    , player_id : Int
+    { big_state : BigState
+    , little_state : LittleState
+    , topic : Maybe String
+    , category : Maybe String
+    , active_players : List String
+    , winner : Maybe Int
+    , players : Dict.Dict String Player
+    , table_name : String
+    , remaining_turns : Int
+    , connected_computers : Int
     }
+
+
+bigStateDecoder : Json.Decode.Decoder BigState
+bigStateDecoder =
+    Json.Decode.string
+        |> Json.Decode.andThen
+            (\str ->
+                case str of
+                    "welcome" ->
+                        Json.Decode.succeed Welcome
+
+                    "lobby" ->
+                        Json.Decode.succeed Lobby
+
+                    "game" ->
+                        Json.Decode.succeed Game
+
+                    _ ->
+                        Debug.crash "Unknown little state"
+            )
+
+
+littleStateDecoder : Json.Decode.Decoder LittleState
+littleStateDecoder =
+    Json.Decode.string
+        |> Json.Decode.andThen
+            (\str ->
+                case str of
+                    "pick" ->
+                        Json.Decode.succeed Pick
+
+                    "draw" ->
+                        Json.Decode.succeed Draw
+
+                    "vote" ->
+                        Json.Decode.succeed Vote
+
+                    _ ->
+                        Debug.crash "Unknown little state"
+            )
 
 
 tableStateDecoder : Json.Decode.Decoder TableState
 tableStateDecoder =
-    Json.Decode.map2 TableState
-        (Json.Decode.field "table" Json.Decode.string)
-        (Json.Decode.field "id" Json.Decode.int)
+    Json.Decode.succeed TableState
+        |> Json.Decode.Extra.andMap (Json.Decode.field "big_state" bigStateDecoder)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "little_state" littleStateDecoder)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "topic" (Json.Decode.maybe Json.Decode.string))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "category" (Json.Decode.maybe Json.Decode.string))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "active_players" (Json.Decode.list Json.Decode.string))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "winner" (Json.Decode.maybe Json.Decode.int))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "players" (Json.Decode.dict playerDecoder))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "table_name" Json.Decode.string)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "remaining_turns" Json.Decode.int)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "connected_computers" Json.Decode.int)
 
 
 errorDecoder : Json.Decode.Decoder String
@@ -198,20 +251,18 @@ namesDecoder =
 
 
 type alias Player =
-    { player_id : Int
+    { seat : Maybe Int
     , name : String
-    , isActive : Bool
-    , seat : Int
+    , role : String
     }
 
 
 playerDecoder : Json.Decode.Decoder Player
 playerDecoder =
-    Json.Decode.map4 Player
-        (Json.Decode.field "id" Json.Decode.int)
+    Json.Decode.map3 Player
+        (Json.Decode.field "seat" (Json.Decode.maybe Json.Decode.int))
         (Json.Decode.field "name" Json.Decode.string)
-        (Json.Decode.field "is_active" Json.Decode.bool)
-        (Json.Decode.field "seat" Json.Decode.int)
+        (Json.Decode.field "role" Json.Decode.string)
 
 
 type alias GameState =
@@ -223,6 +274,19 @@ gameDecoder : Json.Decode.Decoder GameState
 gameDecoder =
     Json.Decode.map GameState
         (Json.Decode.field "players" (Json.Decode.list playerDecoder))
+
+
+type alias JoinTableState =
+    { table : String
+    , playerId : Int
+    }
+
+
+joinTableStateDecoder : Json.Decode.Decoder JoinTableState
+joinTableStateDecoder =
+    Json.Decode.map2 JoinTableState
+        (Json.Decode.field "table" Json.Decode.string)
+        (Json.Decode.field "id" Json.Decode.int)
 
 
 
@@ -247,7 +311,7 @@ update msg model =
             ( model, Cmd.none )
 
         Table name ->
-            ( { model | tableRequest = name }, Cmd.none )
+            ( { model | tableRequest = Just name }, Cmd.none )
 
         NameTagChange nameTag ->
             let
@@ -257,14 +321,12 @@ update msg model =
                 push =
                     Phoenix.Push.init "name_tag" (Maybe.withDefault "" model.tableTopic)
                         |> Phoenix.Push.withPayload payload
-                        |> Phoenix.Push.onOk JoinTable
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
             in
             ( { model
                 | phxSocket = phxSocket
-                , nameTag = nameTag
               }
             , Cmd.map PhoenixMsg phxCmd
             )
@@ -305,14 +367,20 @@ update msg model =
             )
 
         JoinTable raw ->
-            case Json.Decode.decodeValue tableStateDecoder raw of
-                Ok tableState ->
+            case Json.Decode.decodeValue joinTableStateDecoder raw of
+                Ok joinTable ->
                     let
                         tableTopic =
-                            "table:" ++ tableState.table
+                            "table:" ++ joinTable.table
+
+                        st =
+                            model.state
+
+                        newState =
+                            { st | big_state = Lobby }
 
                         newModel =
-                            { model | tableTopic = Just tableTopic, currentScreen = Lobby, player_id = tableState.player_id }
+                            { model | tableTopic = Just tableTopic, playerId = joinTable.playerId, state = newState }
 
                         ( newLeaveModel, leaveCmd ) =
                             update LeaveWelcomeChannel newModel
@@ -343,8 +411,6 @@ update msg model =
 
                 phxSocket_ =
                     Phoenix.Socket.on "update" topic UpdateState phxSocket
-                        |> Phoenix.Socket.on "update_game" (Maybe.withDefault "" model.tableTopic) UpdateGame
-                        |> Phoenix.Socket.on "start_game" (Maybe.withDefault "" model.tableTopic) StartGame
             in
             ( { model | phxSocket = phxSocket_ }
             , Cmd.map PhoenixMsg phxCmd
@@ -373,24 +439,10 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
-        StartGame _ ->
-            ( { model | currentScreen = Game }, Cmd.none )
-
-        UpdateGame raw ->
-            case Json.Decode.decodeValue gameDecoder raw of
-                Ok gameState ->
-                    ( { model | players = gameState.players }, Cmd.none )
-
-                Err error ->
-                    ( { model | errorText = "failed to update game" }, Cmd.none )
-
-        ChangeScreen screen ->
-            ( { model | currentScreen = screen }, Cmd.none )
-
         UpdateState raw ->
-            case Json.Decode.decodeValue namesDecoder raw of
-                Ok nameTags ->
-                    ( { model | nameTags = nameTags }, Cmd.none )
+            case Json.Decode.decodeValue tableStateDecoder raw of
+                Ok tableState ->
+                    ( { model | state = tableState }, Cmd.none )
 
                 Err error ->
                     ( { model | errorText = "couldn't update state" }, Cmd.none )
@@ -442,7 +494,7 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    case model.currentScreen of
+    case model.state.big_state of
         Welcome ->
             div []
                 [ h2 [] [ text "A Phony Painter goes to NJ" ]
@@ -450,7 +502,7 @@ view model =
                 , button [ onClick RequestNewTable ] [ text "I want a new table" ]
                 , hr [] []
                 , input [ type_ "text", placeholder "enter table name", onInput Table ] []
-                , button [ onClick <| RequestJoinTable model.tableRequest ] [ text "I'm meeting my friends" ]
+                , button [ onClick <| RequestJoinTable (Maybe.withDefault "" model.tableRequest) ] [ text "I'm meeting my friends" ]
                 , p [ style errStyle ] [ text model.errorText ]
                 ]
 
@@ -495,15 +547,36 @@ getActivePlayerHelper player =
             Debug.crash "Player list didn't have you in it!"
 
 
+getPlayerHelper : Maybe String -> String
+getPlayerHelper player =
+    case player of
+        Just elem ->
+            elem
+
+        Nothing ->
+            Debug.crash "No active players!?"
+
+
+getFirst : List String -> String
+getFirst players =
+    getPlayerHelper (players |> List.head)
+
+
 choicesView : Model -> Html Msg
 choicesView model =
     let
-        activePlayer =
-            getActivePlayerHelper (List.filter (\player -> player.player_id == model.player_id) model.players |> List.head)
+        active_player_id =
+            getFirst model.state.active_players
+
+        active_player =
+            Dict.get active_player_id model.state.players
+
+        is_active =
+            String.toInt active_player_id == Ok model.playerId
     in
-    if activePlayer.seat == 0 && activePlayer.isActive == True then
+    if is_active && model.state.big_state == Game && model.state.little_state == Pick then
         button [ onClick ChooseCategory ] [ text "Choose Topic" ]
-    else if activePlayer.isActive == True then
+    else if is_active && model.state.big_state == Game && model.state.little_state == Draw then
         button [ onClick ProgressGame ] [ text "Progress Game" ]
     else
         text ""
@@ -664,7 +737,7 @@ nameTagView : Model -> Html msg
 nameTagView model =
     div []
         [ h2 [] [ text "Painters" ]
-        , ul [] <| displayNameTags model.nameTags
+        , ul [] <| displayNameTags model.state.players
         ]
 
 
@@ -672,7 +745,7 @@ playersListView : Model -> Html msg
 playersListView model =
     div []
         [ h2 [] [ text "Painters" ]
-        , ul [] <| displayPlayer model.players
+        , ul [] <| displayPlayer (Dict.values model.state.players)
         ]
 
 
@@ -684,18 +757,21 @@ displayPlayer players =
                 [ text ("Name: " ++ player.name)
                 , ul
                     []
-                    [ li [] [ text ("Player Id: " ++ toString player.player_id) ]
+                    [ li [] [ text ("Role: " ++ toString player.role) ]
                     , li [] [ text ("Seat: " ++ toString player.seat) ]
-                    , li [] [ text ("Active Player? " ++ toString player.isActive) ]
                     ]
                 ]
         )
         players
 
 
-displayNameTags : List NameTag -> List (Html.Html msg)
-displayNameTags nameTags =
-    List.map (\nameTag -> li [] [ text nameTag ]) nameTags
+displayNameTags : Dict.Dict String Player -> List (Html.Html msg)
+displayNameTags playerMap =
+    let
+        x =
+            Dict.values playerMap
+    in
+    List.map (\player -> li [] [ text player.name ]) (Dict.values playerMap)
 
 
 errStyle : List ( String, String )
