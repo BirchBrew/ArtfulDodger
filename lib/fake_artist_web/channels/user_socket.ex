@@ -22,7 +22,7 @@ defmodule FakeArtistWeb.UserSocket do
   # performing token verification on connect.
   def connect(_params, socket) do
     FakeArtistWeb.Endpoint.subscribe("room:lobby")
-    socket = assign(socket, :id, System.unique_integer([:positive]))
+    socket = assign(socket, :id, to_string(System.unique_integer([:positive])))
     {:ok, socket}
   end
 

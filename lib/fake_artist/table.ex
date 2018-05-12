@@ -64,8 +64,6 @@ defmodule FakeArtist.Table do
           table_name: table_name
         }
       ) do
-    id = to_string(id)
-
     players =
       if Map.has_key?(players, id) do
         players
@@ -103,8 +101,8 @@ defmodule FakeArtist.Table do
       ) do
     player_ids = Map.keys(players)
 
-    {game_master_id, player_ids_without_game_master} = get_random_player(player_ids)
-    {trickster_id, _} = get_random_player(player_ids_without_game_master)
+    [game_master_id | player_ids_without_game_master] = Enum.shuffle(player_ids)
+    [trickster_id | _] = Enum.shuffle(player_ids_without_game_master)
 
     players =
       update_player_role(players, game_master_id, :game_master)
@@ -113,7 +111,9 @@ defmodule FakeArtist.Table do
     game_master = Map.get(players, game_master_id) |> Map.put(:seat, 0)
     players_without_game_master = Map.delete(players, game_master_id)
 
-    seats = 1..((players |> Map.keys() |> length()) - 1) |> Enum.to_list() |> Enum.shuffle()
+    last_seat_num = players_without_game_master |> Enum.count()
+
+    seats = 1..last_seat_num |> Enum.to_list() |> Enum.shuffle()
     players_with_seats = Enum.zip(seats, players_without_game_master)
 
     players =
@@ -122,7 +122,6 @@ defmodule FakeArtist.Table do
         into: %{},
         do: {player_id, Map.put(player, :seat, index)}
       )
-      |> Map.new()
 
     players = players |> Map.put(game_master_id, game_master)
 
@@ -151,7 +150,7 @@ defmodule FakeArtist.Table do
     state = %{
       state
       | active_players: get_active_players(players, active_players),
-        remaining_turns: ((players |> Map.keys() |> length()) - 1) * 2,
+        remaining_turns: ((players |> Enum.count()) - 1) * 2,
         little_state: :draw
     }
 
@@ -170,26 +169,25 @@ defmodule FakeArtist.Table do
           table_name: table_name
         }
       ) do
-    if remaining_turns == 1 do
-      Logger.info(fn -> "Voting." end)
+    state =
+      if remaining_turns == 1 do
+        Logger.info(fn -> "Voting." end)
 
-      state = %{
-        state
-        | little_state: :vote
-      }
+        %{
+          state
+          | little_state: :vote
+        }
+      else
+        %{
+          state
+          | active_players: get_active_players(players, active_players),
+            remaining_turns: remaining_turns - 1
+        }
+      end
 
-      {:reply, :ok, state}
-    else
-      state = %{
-        state
-        | active_players: get_active_players(players, active_players),
-          remaining_turns: remaining_turns - 1
-      }
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
-      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
-
-      {:reply, :ok, state}
-    end
+    {:reply, :ok, state}
   end
 
   def handle_info(
@@ -204,7 +202,7 @@ defmodule FakeArtist.Table do
 
     if connected_computers - 1 == 0 do
       Logger.info(fn -> "suicide" end)
-      {:stop, :shutdown, %{}}
+      {:stop, :shutdown, state}
     else
       state = %{
         state
@@ -233,8 +231,8 @@ defmodule FakeArtist.Table do
   defp get_active_players(players, active_players) do
     current_active_player_id = active_players |> hd()
     current_active_player_seat = Map.get(players, current_active_player_id).seat
-    next_seat = get_next_seat(current_active_player_seat, players |> Map.keys() |> length())
-    next_id = players |> Enum.find(fn {_, player} -> player.seat == next_seat end) |> elem(0)
+    next_seat = get_next_seat(current_active_player_seat, players |> Enum.count())
+    {next_id, _} = players |> Enum.find(fn {_, player} -> player.seat == next_seat end)
     [next_id]
   end
 
@@ -245,17 +243,5 @@ defmodule FakeArtist.Table do
     else
       current_seat + 1
     end
-  end
-
-  @spec get_random_player(list()) :: tuple()
-  defp get_random_player(players) do
-    random_player = Enum.random(players)
-    without_random_player = List.delete(players, random_player)
-    {random_player, without_random_player}
-  end
-
-  @spec list_up_to(number()) :: list()
-  def list_up_to(n) do
-    Enum.to_list(0..(n - 1))
   end
 end

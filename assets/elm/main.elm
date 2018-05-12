@@ -115,6 +115,7 @@ type alias Line =
 
 type alias Model =
     { phxSocket : Phoenix.Socket.Socket Msg
+    , state : TableState
     , tableTopic : Maybe Topic
     , tableRequest : Maybe String
     , errorText : String
@@ -124,8 +125,7 @@ type alias Model =
     , offCanvas : Bool
     , windowHeight : Int
     , windowWidth : Int
-    , state : TableState
-    , playerId : Int
+    , playerId : String
     }
 
 
@@ -143,8 +143,19 @@ initModelCmd windowWidth windowHeight socketServer =
         , offCanvas = False
         , windowHeight = windowHeight
         , windowWidth = windowWidth
-        , state = TableState Welcome Pick Nothing Nothing [] Nothing Dict.empty "" 0 0
-        , playerId = -1
+        , state =
+            { bigState = Welcome
+            , littleState = Pick
+            , topic = Nothing
+            , category = Nothing
+            , activePlayers = []
+            , winner = Nothing
+            , players = Dict.empty
+            , tableName = ""
+            , remainingTurns = 0
+            , connectedComputers = 0
+            }
+        , playerId = ""
         }
 
 
@@ -178,16 +189,16 @@ subscriptions model =
 
 
 type alias TableState =
-    { big_state : BigState
-    , little_state : LittleState
+    { bigState : BigState
+    , littleState : LittleState
     , topic : Maybe String
     , category : Maybe String
-    , active_players : List String
-    , winner : Maybe Int
+    , activePlayers : List String
+    , winner : Maybe String
     , players : Dict.Dict String Player
-    , table_name : String
-    , remaining_turns : Int
-    , connected_computers : Int
+    , tableName : String
+    , remainingTurns : Int
+    , connectedComputers : Int
     }
 
 
@@ -259,7 +270,7 @@ tableStateDecoder =
         |> Json.Decode.Extra.andMap (Json.Decode.field "topic" (Json.Decode.maybe Json.Decode.string))
         |> Json.Decode.Extra.andMap (Json.Decode.field "category" (Json.Decode.maybe Json.Decode.string))
         |> Json.Decode.Extra.andMap (Json.Decode.field "active_players" (Json.Decode.list Json.Decode.string))
-        |> Json.Decode.Extra.andMap (Json.Decode.field "winner" (Json.Decode.maybe Json.Decode.int))
+        |> Json.Decode.Extra.andMap (Json.Decode.field "winner" (Json.Decode.maybe Json.Decode.string))
         |> Json.Decode.Extra.andMap (Json.Decode.field "players" (Json.Decode.dict playerDecoder))
         |> Json.Decode.Extra.andMap (Json.Decode.field "table_name" Json.Decode.string)
         |> Json.Decode.Extra.andMap (Json.Decode.field "remaining_turns" Json.Decode.int)
@@ -304,7 +315,7 @@ gameDecoder =
 
 type alias JoinTableState =
     { table : String
-    , playerId : Int
+    , playerId : String
     }
 
 
@@ -312,7 +323,7 @@ joinTableStateDecoder : Json.Decode.Decoder JoinTableState
 joinTableStateDecoder =
     Json.Decode.map2 JoinTableState
         (Json.Decode.field "table" Json.Decode.string)
-        (Json.Decode.field "id" Json.Decode.int)
+        (Json.Decode.field "id" Json.Decode.string)
 
 
 
@@ -403,7 +414,7 @@ update msg model =
                             model.state
 
                         newState =
-                            { st | big_state = Lobby }
+                            { st | bigState = Lobby }
 
                         newModel =
                             { model | tableTopic = Just tableTopic, playerId = joinTable.playerId, state = newState }
@@ -520,7 +531,7 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    case model.state.big_state of
+    case model.state.bigState of
         Welcome ->
             div []
                 [ h2 [] [ text "A Phony Painter goes to NJ" ]
@@ -603,24 +614,24 @@ displayActivePlayers model =
             li []
                 [ text player_id ]
         )
-        model.state.active_players
+        model.state.activePlayers
 
 
 choicesView : Model -> Html Msg
 choicesView model =
     let
         active_player_id =
-            getFirst model.state.active_players
+            getFirst model.state.activePlayers
 
         active_player =
             Dict.get active_player_id model.state.players
 
         is_active =
-            String.toInt active_player_id == Ok model.playerId
+            active_player_id == model.playerId
     in
-    if is_active && model.state.big_state == Game && model.state.little_state == Pick then
+    if is_active && model.state.littleState == Pick then
         button [ onClick ChooseCategory ] [ text "Choose Topic" ]
-    else if is_active && model.state.big_state == Game && model.state.little_state == Draw then
+    else if is_active && model.state.littleState == Draw then
         button [ onClick ProgressGame ] [ text "Progress Game" ]
     else
         text ""
@@ -811,10 +822,6 @@ displayPlayer players =
 
 displayNameTags : Dict.Dict String Player -> List (Html.Html msg)
 displayNameTags playerMap =
-    let
-        x =
-            Dict.values playerMap
-    in
     List.map (\player -> li [] [ text player.name ]) (Dict.values playerMap)
 
 
