@@ -82,6 +82,7 @@ type Msg
     | Up Pointer.Event
     | KeyDown Int
     | Resize Int Int
+    | VoteFor String
     | None
 
 
@@ -93,6 +94,7 @@ type BigState
     = Welcome
     | Lobby
     | Game
+    | End
 
 
 type LittleState
@@ -299,15 +301,17 @@ type alias Player =
     { seat : Maybe Int
     , name : String
     , role : Role
+    , votedFor : Maybe String
     }
 
 
 playerDecoder : Json.Decode.Decoder Player
 playerDecoder =
-    Json.Decode.map3 Player
+    Json.Decode.map4 Player
         (Json.Decode.field "seat" (Json.Decode.maybe Json.Decode.int))
         (Json.Decode.field "name" Json.Decode.string)
         (Json.Decode.field "role" roleDecoder)
+        (Json.Decode.field "voted_for" (Json.Decode.maybe Json.Decode.string))
 
 
 type alias GameState =
@@ -520,6 +524,27 @@ update msg model =
             , Cmd.map PhoenixMsg phxCmd
             )
 
+        VoteFor playerId ->
+            let
+                payload =
+                    Json.Encode.object
+                        [ ( "for", Json.Encode.string playerId )
+                        , ( "by", Json.Encode.string model.playerId )
+                        ]
+
+                push =
+                    Phoenix.Push.init "vote_for" (Maybe.withDefault "" model.tableTopic)
+                        |> Phoenix.Push.withPayload payload
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
+            in
+            ( { model
+                | phxSocket = phxSocket
+              }
+            , Cmd.map PhoenixMsg phxCmd
+            )
+
         Down event ->
             ( { model | mouseDown = True }, Cmd.none )
 
@@ -682,11 +707,21 @@ viewRest model =
                     [ h2 [] [ text "Game:" ]
                     , overviewView model
                     , playersListView model
-                    , viewDrawing model
                     , choicesView model
                     ]
-                , drawingSpace model
+                , case model.state.littleState of
+                    Pick ->
+                        text ""
+
+                    Draw ->
+                        drawingSpace model
+
+                    Vote ->
+                        votesView model
                 ]
+
+        End ->
+            text ""
 
 
 getActivePlayerHelper : Maybe Player -> Player
@@ -909,6 +944,27 @@ nameTagView model =
         []
         (title H2 [] [ text "Painters" ]
             :: displayNameTags model.state.players
+        )
+
+
+votesView : Model -> Html Msg
+votesView model =
+    div []
+        [ h2 [] [ text "Who is the Dodgy Artist?" ]
+        , ul [] <| playerButtons model.state.players
+        ]
+
+
+playerButtons : Dict.Dict String Player -> List (Html Msg)
+playerButtons players =
+    List.map
+        (\player ->
+            button [ onClick (VoteFor (Tuple.first player)) ]
+                [ text <| .name <| Tuple.second player
+                ]
+        )
+        (Dict.toList
+            players
         )
 
 

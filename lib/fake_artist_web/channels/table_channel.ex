@@ -32,4 +32,9 @@ defmodule FakeArtistWeb.TableChannel do
     FakeArtist.Table.choose_category(socket.assigns.table)
     {:noreply, socket}
   end
+
+  def handle_in("vote_for", %{"for" => voted_for, "by" => voted_by}, socket) do
+    FakeArtist.Table.vote_for(socket.assigns.table, {voted_for, voted_by})
+    {:noreply, socket}
+  end
 end
