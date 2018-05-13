@@ -227,6 +227,9 @@ bigStateDecoder =
                     "game" ->
                         Json.Decode.succeed Game
 
+                    "end" ->
+                        Json.Decode.succeed End
+
                     _ ->
                         Debug.crash "Unknown big state"
             )
@@ -717,15 +720,23 @@ viewRest model =
                         drawingSpace model
 
                     Vote ->
-                        votesView model
+                        if isGameMaster model || hasVoted model == True then
+                            text ""
+                        else
+                            votesView model
                 ]
 
         End ->
-            text ""
+            displayWinner model
 
 
-getActivePlayerHelper : Maybe Player -> Player
-getActivePlayerHelper player =
+displayWinner : Model -> Html msg
+displayWinner model =
+    text (Maybe.withDefault "" model.state.winner)
+
+
+guaranteePlayerExists : Maybe Player -> Player
+guaranteePlayerExists player =
     case player of
         Just elem ->
             elem
@@ -734,8 +745,18 @@ getActivePlayerHelper player =
             Debug.crash "Player list didn't have you in it!"
 
 
-getPlayerHelper : Maybe String -> String
-getPlayerHelper player =
+guaranteeTupleExists : Maybe ( String, Player ) -> ( String, Player )
+guaranteeTupleExists player =
+    case player of
+        Just elem ->
+            elem
+
+        Nothing ->
+            Debug.crash "No game master in list!"
+
+
+guaranteeStringExists : Maybe String -> String
+guaranteeStringExists player =
     case player of
         Just elem ->
             elem
@@ -746,7 +767,7 @@ getPlayerHelper player =
 
 getFirst : List String -> String
 getFirst players =
-    getPlayerHelper (players |> List.head)
+    guaranteeStringExists (players |> List.head)
 
 
 overviewView : Model -> Html Msg
@@ -951,15 +972,33 @@ votesView : Model -> Html Msg
 votesView model =
     div []
         [ h2 [] [ text "Who is the Dodgy Artist?" ]
-        , ul [] <| playerButtons model.state.players
+        , ul [] <| (playersExceptMeAndGameMaster model |> playerButtons)
         ]
+
+
+playersExceptMeAndGameMaster : Model -> Dict.Dict String Player
+playersExceptMeAndGameMaster model =
+    Dict.remove model.playerId model.state.players |> removeGameMaster
+
+
+removeGameMaster : Dict.Dict String Player -> Dict.Dict String Player
+removeGameMaster players =
+    let
+        playerList =
+            players |> Dict.toList
+
+        gameMaster =
+            List.filter (\player -> (player |> Tuple.second |> .role) == GameMaster) playerList |> List.head
+    in
+    Dict.remove (gameMaster |> guaranteeTupleExists |> Tuple.first) players
 
 
 playerButtons : Dict.Dict String Player -> List (Html Msg)
 playerButtons players =
     List.map
         (\player ->
-            button [ onClick (VoteFor (Tuple.first player)) ]
+            button myButtonModifiers
+                [ onClick (VoteFor (Tuple.first player)) ]
                 [ text <| .name <| Tuple.second player
                 ]
         )
@@ -1001,3 +1040,23 @@ displayNameTags playerMap =
                 ]
         )
         (Dict.values playerMap)
+
+
+isGameMaster : Model -> Bool
+isGameMaster model =
+    (Dict.get model.playerId model.state.players |> guaranteePlayerExists |> .role) == GameMaster
+
+
+isTrickster : Model -> Bool
+isTrickster model =
+    (Dict.get model.playerId model.state.players |> guaranteePlayerExists |> .role) == Trickster
+
+
+isBasicPlayer : Model -> Bool
+isBasicPlayer model =
+    (Dict.get model.playerId model.state.players |> guaranteePlayerExists |> .role) == BasicPlayer
+
+
+hasVoted : Model -> Bool
+hasVoted model =
+    (Dict.get model.playerId model.state.players |> guaranteePlayerExists |> .votedFor) /= Nothing

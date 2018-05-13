@@ -210,7 +210,8 @@ defmodule FakeArtist.Table do
 
         %{
           state
-          | big_state: :end
+          | big_state: :end,
+            winner: get_winner(players)
         }
       else
         state
@@ -289,5 +290,30 @@ defmodule FakeArtist.Table do
 
     Enum.count(state.players |> Map.values(), fn x -> x.voted_for == nil end) ==
       0 + game_master_vote
+  end
+
+  @spec get_winner(map()) :: binary()
+  defp get_winner(players) do
+    # TODO: Figure out who should win ties and make sure the right people win ties.
+    map_of_counts =
+      Enum.reduce(players |> Map.values(), %{}, fn player, acc ->
+        Map.update(acc, player.voted_for, 1, &(&1 + 1))
+      end)
+
+    [{key, _count} | _rest] = map_of_counts |> Map.to_list() |> Enum.sort_by(fn {_, v} -> v end)
+
+    if key == get_trickster_id(players) do
+      "Players win!"
+    else
+      "Trickster and Game Master win!"
+    end
+  end
+
+  @spec get_trickster_id(map()) :: binary()
+  defp get_trickster_id(players) do
+    {trickster_id, _trickster} =
+      players |> Map.to_list() |> Enum.find(fn {_id, player} -> player.role == :trickster end)
+
+    trickster_id
   end
 end
