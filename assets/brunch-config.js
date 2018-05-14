@@ -49,8 +49,8 @@ exports.config = {
       mainModules: ["main.elm"],
       outputFolder: "../js",
       outputFile: "elm.js",
-      makeParameters: ["--warn --debug"] // TODO remove before going live
-      // makeParameters: ["--warn"] // TODO use this instead
+      // makeParameters: ["--warn --debug"] // TODO remove before going live
+      makeParameters: ["--warn"] // TODO use this instead
     },
     babel: {
       // Do not use ES6 compiler in vendor code

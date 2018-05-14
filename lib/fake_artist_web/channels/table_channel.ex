@@ -8,7 +8,7 @@ defmodule FakeArtistWeb.TableChannel do
 
   def handle_info({:after_join, table_name}, socket) do
     table_pid = FakeArtist.Hostess.get_table_pid(table_name)
-    FakeArtist.Table.add_self(table_pid)
+    FakeArtist.Table.add_self(table_pid, socket.assigns.id)
     socket = assign(socket, :table, table_pid)
     {:noreply, socket}
   end
@@ -23,12 +23,17 @@ defmodule FakeArtistWeb.TableChannel do
     {:noreply, socket}
   end
 
-  def handle_in("progress_game", _, socket) do
-    FakeArtist.Table.progress_game(socket.assigns.table)
+  def handle_in("paint_line", %{"line" => line}, socket) do
+    FakeArtist.Table.paint_line(socket.assigns.table, socket.assigns.id, line)
     {:noreply, socket}
   end
 
-  def handle_in("choose_category", _, socket) do
+  def handle_in("progress_game", %{}, socket) do
+    FakeArtist.Table.progress_game(socket.assigns.table, socket.assigns.id)
+    {:noreply, socket}
+  end
+
+  def handle_in("choose_category", %{}, socket) do
     FakeArtist.Table.choose_category(socket.assigns.table)
     {:noreply, socket}
   end

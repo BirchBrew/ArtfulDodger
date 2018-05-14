@@ -15,9 +15,12 @@ end
 
 defmodule FakeArtist.Player do
   defstruct(
-    seat: nil,
+    seat: -1,
     role: :player,
     name: "",
+    color: "black",
+    name_tag_lines: [],
+    paint_lines: [],
     voted_for: nil
   )
 end
@@ -27,25 +30,46 @@ defmodule FakeArtist.Table do
 
   require Logger
 
+  @num_lines_per_artist 2
+  # http://www.draketo.de/light/english/websafe-colors-colorblind-safe
+  # took out the yellow because it was too hard to see against the white bg
+  @colors ~w(
+      #ff0000
+      #800000
+      #707030
+      #00ee00
+      #009000
+      #00eeee
+      #00a0a0
+      #0000ff
+      #000080
+      #ff00ff
+      #900090
+  )
+
   # Public API
   def start_link(default) do
     GenServer.start_link(__MODULE__, default)
+  end
+
+  def add_self(pid, id) do
+    GenServer.call(pid, {:add_self, id})
   end
 
   def update_name_tag(pid, {id, name_tag}) do
     GenServer.call(pid, {:update_name_tag, {id, name_tag}})
   end
 
-  def add_self(pid) do
-    GenServer.call(pid, :add_self)
-  end
-
   def start_game(pid) do
     GenServer.call(pid, :start_game)
   end
 
-  def progress_game(pid) do
-    GenServer.call(pid, :progress_game)
+  def paint_line(pid, id, line) do
+    GenServer.call(pid, {:paint_line, id, line})
+  end
+
+  def progress_game(pid, id) do
+    GenServer.call(pid, {:progress_game, id})
   end
 
   def choose_category(pid) do
@@ -62,30 +86,13 @@ defmodule FakeArtist.Table do
   end
 
   def handle_call(
-        {:update_name_tag, {id, name_tag}},
-        _from,
+        {:add_self, id},
+        {from_pid, _},
         state = %{
           players: players,
-          table_name: table_name
+          connected_computers: connected_computers
         }
       ) do
-    players =
-      if Map.has_key?(players, id) do
-        players
-      else
-        Map.put(players, id, %FakeArtist.Player{})
-      end
-
-    players = update_player_name(players, id, name_tag)
-
-    state = %{state | players: players}
-
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
-
-    {:reply, :ok, state}
-  end
-
-  def handle_call(:add_self, {from_pid, _}, state = %{connected_computers: connected_computers}) do
     Logger.info(fn -> "started monitoring #{inspect(from_pid)}" end)
     Process.monitor(from_pid)
 
@@ -93,7 +100,26 @@ defmodule FakeArtist.Table do
       "player count increased from #{connected_computers} to #{connected_computers + 1}"
     end)
 
-    {:reply, :ok, %{state | connected_computers: connected_computers + 1}}
+    players = Map.put(players, id, %FakeArtist.Player{})
+
+    {:reply, :ok, %{state | players: players, connected_computers: connected_computers + 1}}
+  end
+
+  def handle_call(
+        {:update_name_tag, {id, name_tag}},
+        _from,
+        state = %{
+          players: players,
+          table_name: table_name
+        }
+      ) do
+    players = update_player_name(players, id, name_tag)
+
+    state = %{state | players: players}
+
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+
+    {:reply, :ok, state}
   end
 
   def handle_call(
@@ -118,13 +144,14 @@ defmodule FakeArtist.Table do
     last_seat_num = players_without_game_master |> Enum.count()
 
     seats = 1..last_seat_num |> Enum.to_list() |> Enum.shuffle()
-    players_with_seats = Enum.zip(seats, players_without_game_master)
+    shuffled_colors = Enum.shuffle(@colors)
+    players_with_seats = Enum.zip([seats, shuffled_colors, players_without_game_master])
 
     players =
       for(
-        {index, {player_id, player}} <- players_with_seats,
+        {index, color, {player_id, player}} <- players_with_seats,
         into: %{},
-        do: {player_id, Map.put(player, :seat, index)}
+        do: {player_id, %{player | seat: index, color: color}}
       )
 
     players = players |> Map.put(game_master_id, game_master)
@@ -154,7 +181,7 @@ defmodule FakeArtist.Table do
     state = %{
       state
       | active_players: get_active_players(players, active_players),
-        remaining_turns: ((players |> Enum.count()) - 1) * 2,
+        remaining_turns: ((players |> Enum.count()) - 1) * @num_lines_per_artist,
         little_state: :draw
     }
 
@@ -164,7 +191,29 @@ defmodule FakeArtist.Table do
   end
 
   def handle_call(
-        :progress_game,
+        {:paint_line, id, line},
+        _from,
+        state = %{
+          players: players,
+          table_name: table_name
+        }
+      ) do
+    players =
+      Map.update!(players, id, fn player = %{paint_lines: paint_lines} ->
+        case paint_lines do
+          [] -> %{player | paint_lines: [line]}
+          [_old_cur_line | others] -> %{player | paint_lines: [line | others]}
+        end
+      end)
+
+    state = %{state | players: players}
+    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+
+    {:reply, :ok, state}
+  end
+
+  def handle_call(
+        {:progress_game, id},
         _from,
         state = %{
           active_players: active_players,
@@ -173,6 +222,12 @@ defmodule FakeArtist.Table do
           table_name: table_name
         }
       ) do
+    player = %{paint_lines: paint_lines} = Map.get(players, id)
+    player_paint_lines = [[] | paint_lines]
+
+    players = %{players | id => %{player | paint_lines: player_paint_lines}}
+    state = %{state | players: players}
+
     state =
       if remaining_turns == 1 do
         Logger.info(fn -> "Voting." end)

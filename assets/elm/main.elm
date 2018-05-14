@@ -35,7 +35,12 @@ welcomeTopic =
 
 drawingWindowRatio : Int
 drawingWindowRatio =
-    50
+    80
+
+
+enterKeyCode : Int
+enterKeyCode =
+    13
 
 
 
@@ -75,7 +80,6 @@ type Msg
     | NameTagChange NameTag
     | UpdateState Json.Encode.Value
     | PushStartGame
-    | ProgressGame
     | ChooseCategory
     | Down Pointer.Event
     | Move Pointer.Event
@@ -118,9 +122,7 @@ type alias Point =
 
 
 type alias Line =
-    { color : String
-    , points : List Point
-    }
+    List Point
 
 
 type alias Model =
@@ -131,11 +133,9 @@ type alias Model =
     , tableRequest : Maybe String
     , errorText : String
     , mouseDown : Bool
-    , lines : List Line
     , currentLine : Line
     , offCanvas : Bool
-    , windowHeight : Int
-    , windowWidth : Int
+    , drawingSpaceEdgePx : Float
     }
 
 
@@ -148,11 +148,10 @@ initModelCmd windowWidth windowHeight socketServer =
         , tableTopic = Nothing
         , errorText = ""
         , mouseDown = False
-        , lines = []
-        , currentLine = Line "black" []
+        , currentLine = []
         , offCanvas = False
-        , windowHeight = windowHeight
-        , windowWidth = windowWidth
+        , drawingSpaceEdgePx =
+            calculateDrawingSpaceEdgePx windowWidth windowHeight
         , state =
             { bigState = Welcome
             , littleState = Pick
@@ -301,20 +300,31 @@ namesDecoder =
 
 
 type alias Player =
-    { seat : Maybe Int
+    { seat : Int
     , name : String
     , role : Role
+    , color : String
+    , nameTagLines : List Line
+    , paintLines : List Line
     , votedFor : Maybe String
     }
 
 
 playerDecoder : Json.Decode.Decoder Player
 playerDecoder =
-    Json.Decode.map4 Player
-        (Json.Decode.field "seat" (Json.Decode.maybe Json.Decode.int))
-        (Json.Decode.field "name" Json.Decode.string)
-        (Json.Decode.field "role" roleDecoder)
-        (Json.Decode.field "voted_for" (Json.Decode.maybe Json.Decode.string))
+    Json.Decode.succeed Player
+        |> Json.Decode.Extra.andMap (Json.Decode.field "seat" Json.Decode.int)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "name" Json.Decode.string)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "role" roleDecoder)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "color" Json.Decode.string)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "name_tag_lines" <| Json.Decode.list lineDecoder)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "paint_lines" <| Json.Decode.list lineDecoder)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "voted_for" (Json.Decode.maybe Json.Decode.string))
+
+
+lineDecoder : Json.Decode.Decoder Line
+lineDecoder =
+    Json.Decode.list Json.Decode.string
 
 
 type alias GameState =
@@ -499,20 +509,6 @@ update msg model =
                 Err error ->
                     ( { model | errorText = "couldn't update state" }, Cmd.none )
 
-        ProgressGame ->
-            let
-                push =
-                    Phoenix.Push.init "progress_game" (Maybe.withDefault "" model.tableTopic)
-
-                ( phxSocket, phxCmd ) =
-                    Phoenix.Socket.push push model.phxSocket
-            in
-            ( { model
-                | phxSocket = phxSocket
-              }
-            , Cmd.map PhoenixMsg phxCmd
-            )
-
         ChooseCategory ->
             let
                 push =
@@ -557,15 +553,13 @@ update msg model =
             handleMouseUp model
 
         KeyDown key ->
-            case key of
-                13 ->
-                    update (RequestJoinTable (Maybe.withDefault "" model.tableRequest)) model
-
-                _ ->
-                    ( model, Cmd.none )
+            if key == enterKeyCode then
+                update (RequestJoinTable (Maybe.withDefault "" model.tableRequest)) model
+            else
+                ( model, Cmd.none )
 
         Resize h w ->
-            ( { model | windowHeight = h, windowWidth = w }, Cmd.none )
+            ( { model | drawingSpaceEdgePx = calculateDrawingSpaceEdgePx h w }, Cmd.none )
 
 
 transformInput : String -> String
@@ -595,8 +589,7 @@ viewWelcome model =
     hero { heroModifiers | size = Large, color = Dark }
         []
         [ heroBody []
-            [ container
-                []
+            [ container []
                 [ title H1 [] [ text "A Dodgy Artist" ]
                 , subtitle H1 [] [ text "Goes to NJ" ]
                 , br [] []
@@ -660,14 +653,12 @@ viewLobby model =
     hero { heroModifiers | size = Large, color = Dark }
         []
         [ heroHead []
-            [ container
-                []
+            [ container []
                 [ title H3 [] [ text <| Maybe.withDefault "" model.tableTopic ]
                 ]
             ]
         , heroBody []
-            [ container
-                []
+            [ container []
                 [ nameTagView model
                 , section Spaced
                     []
@@ -686,6 +677,32 @@ viewLobby model =
         ]
 
 
+viewGame : Model -> Html Msg
+viewGame model =
+    hero { heroModifiers | size = Large, color = Dark }
+        []
+        [ heroBody
+            [ style [ ( "justify-content", "center" ) ]
+            ]
+            (case model.state.littleState of
+                Pick ->
+                    [ choicesView model
+                    ]
+
+                Draw ->
+                    [ nameTagViewingSpace model
+                    , fullDrawingSpace model
+                    ]
+
+                Vote ->
+                    if isGameMaster model || hasVoted model == True then
+                        []
+                    else
+                        [ votesView model ]
+            )
+        ]
+
+
 viewRest : Model -> Html Msg
 viewRest model =
     case model.state.bigState of
@@ -696,34 +713,7 @@ viewRest model =
             viewLobby model
 
         Game ->
-            div
-                [ style
-                    [ ( "height", "100%" )
-                    ]
-                ]
-                [ div
-                    [ style
-                        [ ( "height", toString (100 - drawingWindowRatio) ++ "%" )
-                        ]
-                    ]
-                    [ h2 [] [ text "Game:" ]
-                    , overviewView model
-                    , playersListView model
-                    , choicesView model
-                    ]
-                , case model.state.littleState of
-                    Pick ->
-                        text ""
-
-                    Draw ->
-                        drawingSpace model
-
-                    Vote ->
-                        if isGameMaster model || hasVoted model == True then
-                            text ""
-                        else
-                            votesView model
-                ]
+            viewGame model
 
         End ->
             displayWinner model
@@ -769,14 +759,6 @@ getFirst players =
     guaranteeStringExists (players |> List.head)
 
 
-overviewView : Model -> Html Msg
-overviewView model =
-    div []
-        [ h2 [] [ text "Active Players:" ]
-        , ul [] <| displayActivePlayers model
-        ]
-
-
 displayActivePlayers : Model -> List (Html Msg)
 displayActivePlayers model =
     List.map
@@ -787,65 +769,60 @@ displayActivePlayers model =
         model.state.activePlayers
 
 
+isActivePlayer : Model -> Bool
+isActivePlayer model =
+    List.member model.playerId model.state.activePlayers
+
+
 choicesView : Model -> Html Msg
 choicesView model =
-    let
-        active_player_id =
-            getFirst model.state.activePlayers
-
-        active_player =
-            Dict.get active_player_id model.state.players
-
-        is_active =
-            active_player_id == model.playerId
-    in
-    if is_active && model.state.littleState == Pick then
-        button buttonModifiers [ onClick ChooseCategory ] [ text "Choose Topic" ]
-    else if is_active && model.state.littleState == Draw then
-        button buttonModifiers [ onClick ProgressGame ] [ text "Progress Game" ]
+    if isActivePlayer model && model.state.littleState == Pick then
+        button myButtonModifiers [ onClick ChooseCategory ] [ text "Choose Topic" ]
     else
         text ""
 
 
-viewDrawing : Model -> Html Msg
-viewDrawing model =
-    svg
-        [ getViewBox model
-        , preserveAspectRatio "none"
-        , Svg.Attributes.width "100px"
-        , Svg.Attributes.height "50px"
-        ]
-        (drawLines model)
-
-
-viewBoxWidth : Float
-viewBoxWidth =
-    1920
-
-
-viewBoxHeight : Float
-viewBoxHeight =
-    1080
+viewBoxLength : Float
+viewBoxLength =
+    1024
 
 
 getViewBox : Model -> Html.Attribute msg
 getViewBox model =
-    viewBox <| "0 0 " ++ toString viewBoxWidth ++ " " ++ toString viewBoxHeight
+    viewBox <| "0 0 " ++ toString viewBoxLength ++ " " ++ toString viewBoxLength
 
 
-drawingSpace : Model -> Html Msg
-drawingSpace model =
-    svg (getDrawingSpaceAttributes model) (drawLines model)
+fullDrawingSpace : Model -> Html Msg
+fullDrawingSpace model =
+    drawingSpaceWithRatio (getDrawingSpaceAttributes model) 1.0 model
+
+
+nameTagViewingSpace : Model -> Html Msg
+nameTagViewingSpace model =
+    drawingSpaceWithRatio (getNameTagViewingSpaceAttributes model) 0.1 model
+
+
+drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> Model -> Html Msg
+drawingSpaceWithRatio attributes ratio model =
+    let
+        pxStr =
+            toString (model.drawingSpaceEdgePx * ratio) ++ "px"
+    in
+    box
+        [ style
+            [ ( "padding", "0px" )
+            , ( "height", pxStr )
+            , ( "width", pxStr )
+            , ( "background-color", "#f5f5f5" )
+            ]
+        ]
+        [ svg attributes (drawLines model)
+        ]
 
 
 getDrawingSpaceAttributes : Model -> List (Html.Attribute Msg)
 getDrawingSpaceAttributes model =
-    [ style
-        [ ( "height", toString drawingWindowRatio ++ "%" )
-        , ( "width", "100%" )
-        ]
-    , getViewBox model
-    , preserveAspectRatio "none"
+    [ getViewBox model
 
     -- pointer capture hack to continue "globally" the event anywhere on document.
     , attribute "onpointerdown" "event.target.setPointerCapture(event.pointerId);"
@@ -854,25 +831,43 @@ getDrawingSpaceAttributes model =
         ++ maybeListenForMove model
 
 
+getNameTagViewingSpaceAttributes : Model -> List (Html.Attribute Msg)
+getNameTagViewingSpaceAttributes model =
+    [ getViewBox model
+    , onContextMenu disableContextMenu
+    ]
+
+
+calculateDrawingSpaceEdgePx : Int -> Int -> Float
+calculateDrawingSpaceEdgePx windowWidth windowHeight =
+    min windowWidth windowHeight
+        * drawingWindowRatio
+        // 100
+        |> toFloat
+
+
 maybeListenForMove : Model -> List (Html.Attribute Msg)
-maybeListenForMove { mouseDown } =
+maybeListenForMove model =
     let
         defaultList =
             [ Pointer.onDown Down
             , Pointer.onUp Up
             ]
     in
-    case mouseDown of
-        True ->
-            Pointer.onMove Move :: defaultList
+    if isActivePlayer model && model.state.littleState == Draw then
+        case model.mouseDown of
+            True ->
+                Pointer.onMove Move :: defaultList
 
-        False ->
-            defaultList
+            False ->
+                defaultList
+    else
+        []
 
 
 handleMouseUp : Model -> ( Model, Cmd Msg )
 handleMouseUp model =
-    case List.length model.currentLine.points of
+    case List.length model.currentLine of
         -- nothing drawn, keep currentLine empty
         0 ->
             ( { model | mouseDown = False }, Cmd.none )
@@ -880,10 +875,13 @@ handleMouseUp model =
         -- something was drawn, so save currentLine and start new one
         _ ->
             let
-                newLines =
-                    model.currentLine :: model.lines
+                push =
+                    Phoenix.Push.init "progress_game" (Maybe.withDefault "" model.tableTopic)
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
             in
-            ( { model | mouseDown = False, lines = newLines, currentLine = Line "black" [] }, Cmd.none )
+            ( { model | mouseDown = False, currentLine = [], phxSocket = phxSocket }, Cmd.map PhoenixMsg phxCmd )
 
 
 handleMouseMove : Model -> Pointer.Event -> ( Model, Cmd Msg )
@@ -896,9 +894,6 @@ handleMouseMove model event =
 
                 False ->
                     let
-                        deadZone =
-                            3
-
                         ( x, y ) =
                             event.pointer.offsetPos
 
@@ -908,16 +903,25 @@ handleMouseMove model event =
                         currentLine =
                             model.currentLine
 
-                        points =
-                            translatePos currentPos :: currentLine.points
-
                         newCurrentLine =
-                            { currentLine | points = points }
+                            translatePos currentPos :: currentLine
+
+                        payload =
+                            Json.Encode.object
+                                [ ( "line", Json.Encode.list <| List.map Json.Encode.string newCurrentLine )
+                                ]
+
+                        push =
+                            Phoenix.Push.init "paint_line" (Maybe.withDefault "" model.tableTopic)
+                                |> Phoenix.Push.withPayload payload
+
+                        ( phxSocket, phxCmd ) =
+                            Phoenix.Socket.push push model.phxSocket
                     in
-                    if x < 0 || x >= toFloat model.windowWidth - deadZone || y < 0 || y >= toFloat (model.windowHeight * drawingWindowRatio // 100) - deadZone then
-                        ( { model | currentLine = newCurrentLine, offCanvas = True }, Cmd.none )
+                    if x < 0 || x >= model.drawingSpaceEdgePx || y < 0 || y >= model.drawingSpaceEdgePx then
+                        ( { model | currentLine = newCurrentLine, offCanvas = True, phxSocket = phxSocket }, Cmd.map PhoenixMsg phxCmd )
                     else
-                        ( { model | currentLine = newCurrentLine }, Cmd.none )
+                        ( { model | currentLine = newCurrentLine, phxSocket = phxSocket }, Cmd.map PhoenixMsg phxCmd )
 
         False ->
             ( model, Cmd.none )
@@ -935,17 +939,58 @@ relativePos model pointerEvent =
             pointerEvent.pointer.offsetPos
 
         normalX =
-            x / toFloat model.windowWidth * viewBoxWidth
+            x / model.drawingSpaceEdgePx * viewBoxLength
 
         normalY =
-            y / toFloat (model.windowHeight * drawingWindowRatio // 100) * viewBoxHeight
+            y / model.drawingSpaceEdgePx * viewBoxLength
     in
     ( normalX, normalY )
 
 
 drawLines : Model -> List (Svg msg)
-drawLines { currentLine, lines } =
-    List.map (\line -> polyline [ points (pointString line.points), stroke line.color, strokeWidth "1em", fill "none" ] []) (currentLine :: lines)
+drawLines { state } =
+    let
+        sortedPlayers =
+            state.players
+                |> Dict.values
+                |> List.sortBy .seat
+
+        svgLines =
+            List.map
+                (\{ color, paintLines } ->
+                    List.filterMap
+                        (\line ->
+                            case line of
+                                [] ->
+                                    Nothing
+
+                                _ ->
+                                    Just <| polyline [ points (pointString line), stroke color, strokeWidth "1em", fill "none" ] []
+                        )
+                        paintLines
+                )
+                sortedPlayers
+
+        ( firstLines, secondLines ) =
+            List.foldr svgLinesFolder ( [], [] ) svgLines
+    in
+    firstLines ++ secondLines
+
+
+svgLinesFolder : List (Svg msg) -> ( List (Svg msg), List (Svg msg) ) -> ( List (Svg msg), List (Svg msg) )
+svgLinesFolder lines ( f, s ) =
+    case lines of
+        [] ->
+            ( f, s )
+
+        firstLine :: [] ->
+            ( firstLine :: f, s )
+
+        secondLine :: firstLine :: [] ->
+            ( firstLine :: f, secondLine :: s )
+
+        _ ->
+            Debug.crash "Like in Poker, you can't fold everything"
 
 
 pointString : List Point -> String
@@ -1023,7 +1068,7 @@ displayPlayer players =
                 , ul
                     []
                     [ li [] [ text ("Role: " ++ toString player.role) ]
-                    , li [] [ text ("Seat: " ++ toString (Maybe.withDefault -1 player.seat)) ]
+                    , li [] [ text ("Seat: " ++ toString player.seat) ]
                     ]
                 ]
         )
@@ -1033,9 +1078,9 @@ displayPlayer players =
 displayNameTags : Dict.Dict String Player -> List (Html.Html msg)
 displayNameTags playerMap =
     List.map
-        (\player ->
+        (\{ name } ->
             div []
-                [ tag { tagModifiers | color = Warning } [] [ text player.name ]
+                [ tag { tagModifiers | color = Warning } [] [ text name ]
                 ]
         )
         (Dict.values playerMap)
