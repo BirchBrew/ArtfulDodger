@@ -532,7 +532,6 @@ update msg model =
                 payload =
                     Json.Encode.object
                         [ ( "for", Json.Encode.string playerId )
-                        , ( "by", Json.Encode.string model.playerId )
                         ]
 
                 push =
@@ -996,10 +995,10 @@ removeGameMaster players =
 playerButtons : Dict.Dict String Player -> List (Html Msg)
 playerButtons players =
     List.map
-        (\player ->
+        (\( playerId, playerRecord ) ->
             button myButtonModifiers
-                [ onClick (VoteFor (Tuple.first player)) ]
-                [ text <| .name <| Tuple.second player
+                [ onClick (VoteFor playerId) ]
+                [ text <| playerRecord.name
                 ]
         )
         (Dict.toList

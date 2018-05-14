@@ -288,19 +288,18 @@ defmodule FakeArtist.Table do
   defp everyone_has_voted(state) do
     game_master_vote = 1
 
-    Enum.count(state.players |> Map.values(), fn x -> x.voted_for == nil end) ==
-      0 + game_master_vote
+    Enum.count(state.players, fn {_k, v} -> v.voted_for == nil end) - game_master_vote == 0
   end
 
   @spec get_winner(map()) :: binary()
   defp get_winner(players) do
     # TODO: Figure out who should win ties and make sure the right people win ties.
     map_of_counts =
-      Enum.reduce(players |> Map.values(), %{}, fn player, acc ->
+      Enum.reduce(players, %{}, fn {_player_id, player}, acc ->
         Map.update(acc, player.voted_for, 1, &(&1 + 1))
       end)
 
-    [{key, _count} | _rest] = map_of_counts |> Map.to_list() |> Enum.sort_by(fn {_, v} -> v end)
+    {key, _value} = Enum.max_by(map_of_counts, fn {_k, v} -> v end)
 
     if key == get_trickster_id(players) do
       "Players win!"
