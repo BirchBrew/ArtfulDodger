@@ -140,38 +140,44 @@ viewGame model =
         [ heroBody
             [ style [ ( "justify-content", "center" ) ]
             ]
-            (case model.state.littleState of
-                Pick ->
-                    [ choicesView model
-                    ]
-
-                Draw ->
-                    [ nameTagViewingSpace model
-                    , fullDrawingSpace model
-                    ]
-
-                Vote ->
-                    if isGameMaster model || hasVoted model == True then
-                        []
-                    else
-                        [ votesView model ]
-
-                Tricky ->
-                    if isTrickster model then
-                        [ button myButtonModifiers [ onClick GuessTopic ] [ text "Guess Topic" ] ]
-                    else
-                        []
-
-                Check ->
-                    if isGameMaster model then
-                        [ text "Was the trickster's guess correct?"
-                        , button myButtonModifiers [ onClick <| Validate True ] [ text "Yes" ]
-                        , button myButtonModifiers [ onClick <| Validate False ] [ text "No" ]
-                        ]
-                    else
-                        []
-            )
+            [ container [] [ roleView model ]
+            , container [] <| littleStateView model
+            ]
         ]
+
+
+littleStateView : Model -> List (Button Msg)
+littleStateView model =
+    case model.state.littleState of
+        Pick ->
+            [ choicesView model
+            ]
+
+        Draw ->
+            [ nameTagViewingSpace model
+            , fullDrawingSpace model
+            ]
+
+        Vote ->
+            if isGameMaster model || hasVoted model == True then
+                []
+            else
+                [ votesView model ]
+
+        Tricky ->
+            if isTrickster model then
+                [ button myButtonModifiers [ onClick GuessTopic ] [ text "Guess Topic" ] ]
+            else
+                []
+
+        Check ->
+            if isGameMaster model then
+                [ text "Was the trickster's guess correct?"
+                , button myButtonModifiers [ onClick <| Validate True ] [ text "Yes" ]
+                , button myButtonModifiers [ onClick <| Validate False ] [ text "No" ]
+                ]
+            else
+                []
 
 
 viewRest : Model -> Html Msg
@@ -442,19 +448,29 @@ displayNameTags playerMap =
         (Dict.values playerMap)
 
 
+roleView : Model -> Html Msg
+roleView model =
+    getRole model |> toString |> text
+
+
+getRole : Model -> Role
+getRole model =
+    Dict.get model.playerId model.state.players |> guaranteeJust |> .role
+
+
 isGameMaster : Model -> Bool
 isGameMaster model =
-    (Dict.get model.playerId model.state.players |> guaranteeJust |> .role) == GameMaster
+    getRole model == GameMaster
 
 
 isTrickster : Model -> Bool
 isTrickster model =
-    (Dict.get model.playerId model.state.players |> guaranteeJust |> .role) == Trickster
+    getRole model == Trickster
 
 
 isBasicPlayer : Model -> Bool
 isBasicPlayer model =
-    (Dict.get model.playerId model.state.players |> guaranteeJust |> .role) == BasicPlayer
+    getRole model == BasicPlayer
 
 
 hasVoted : Model -> Bool
