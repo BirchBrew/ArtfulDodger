@@ -36,7 +36,6 @@ defmodule FakeArtist.Table do
   @colors ~w(
       #ff0000
       #800000
-      #707030
       #00ee00
       #009000
       #00eeee
