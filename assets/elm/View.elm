@@ -199,6 +199,7 @@ viewGame model =
         [ heroHead []
             [ container []
                 [ roleView model
+                , playersListView model
                 ]
             ]
         , heroBody
@@ -329,17 +330,17 @@ getViewBox model =
 
 sharedDrawingSpace : Model -> Html Msg
 sharedDrawingSpace model =
-    drawingSpaceWithRatio (sharedDrawingSpaceAttributes model) 1.0 drawPainting model
+    drawingSpaceWithRatio (sharedDrawingSpaceAttributes model) 1.0 (drawPainting model) model
 
 
 soloDrawingSpace : Model -> Html Msg
 soloDrawingSpace model =
-    drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 1.0 drawCurrentSoloDrawing model
+    drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 1.0 (drawLines (model.currentLine :: model.currentSoloDrawing)) model
 
 
-nameTagViewingSpace : Model -> Html Msg
-nameTagViewingSpace model =
-    drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.1 drawCurrentSoloDrawing model
+nameTagViewingSpace : Model -> List Line -> Html Msg
+nameTagViewingSpace model lines =
+    drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.1 (drawLines lines) model
 
 
 viewSubject : Model -> Html Msg
@@ -347,11 +348,11 @@ viewSubject model =
     if isTrickster model then
         text ""
     else
-        drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.2 drawSubject model
+        drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.2 (drawLines model.state.subject) model
 
 
-drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> (Model -> List (Svg Msg)) -> Model -> Html Msg
-drawingSpaceWithRatio attributes ratio drawLinesFn model =
+drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> List (Svg Msg) -> Model -> Html Msg
+drawingSpaceWithRatio attributes ratio lines model =
     let
         pxStr =
             toString (model.drawingSpaceEdgePx * ratio) ++ "px"
@@ -364,7 +365,7 @@ drawingSpaceWithRatio attributes ratio drawLinesFn model =
             , ( "background-color", "#f5f5f5" )
             ]
         ]
-        [ svg attributes (drawLinesFn model)
+        [ svg attributes lines
         ]
 
 
@@ -452,21 +453,12 @@ drawPainting { state } =
     firstLines ++ secondLines
 
 
-drawCurrentSoloDrawing : Model -> List (Svg msg)
-drawCurrentSoloDrawing { currentLine, currentSoloDrawing } =
+drawLines : List Line -> List (Svg msg)
+drawLines lines =
     let
         svgLines =
             -- TODO use player color here instead!
-            svgLinesHelper "black" (currentLine :: currentSoloDrawing)
-    in
-    svgLines
-
-
-drawSubject : Model -> List (Svg msg)
-drawSubject { state } =
-    let
-        svgLines =
-            svgLinesHelper "black" state.subject
+            svgLinesHelper "black" lines
     in
     svgLines
 
@@ -518,7 +510,7 @@ displayPlayer model =
     List.map
         (\player ->
             li []
-                [ nameTagViewingSpace model ]
+                [ nameTagViewingSpace model player.name ]
         )
     <|
         Dict.values model.state.players
