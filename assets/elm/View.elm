@@ -43,67 +43,24 @@ viewWelcome model =
 
 welcomeView : Model -> List (Html Msg)
 welcomeView model =
-    case model.state.littleState of
-        JoinTableScreen ->
-            [ container []
-                [ br [] []
-                , columns columnsModifiers
-                    []
-                    [ column columnModifiers
-                        []
-                        [ soloDrawingSpace model
-                        ]
-                    , column columnModifiers
-                        []
-                        [ connectedFields Left
-                            []
-                            [ tableInput model
-                            , joinTableButton model
-                            ]
-                        , controlHelp Danger [] [ text model.errorText ]
-                        ]
-                    ]
+    [ container []
+        [ title H1 [] [ text "A Dodgy Artist" ]
+        , subtitle H1 [] [ text "Goes to NJ" ]
+        , br [] []
+        , columns columnsModifiers
+            []
+            [ column columnModifiers
+                []
+                [ newTableButton
+                ]
+            , column columnModifiers
+                []
+                [ tableInput model
+                , joinTableButton model
                 ]
             ]
-
-        CreateTableScreen ->
-            [ container []
-                [ br [] []
-                , columns columnsModifiers
-                    []
-                    [ column columnModifiers
-                        []
-                        [ soloDrawingSpace model
-                        ]
-                    , column columnModifiers
-                        []
-                        [ connectedFields Left
-                            []
-                            [ newTableButton
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-
-        _ ->
-            [ container []
-                [ title H1 [] [ text "A Dodgy Artist" ]
-                , subtitle H1 [] [ text "Goes to NJ" ]
-                , br [] []
-                , columns columnsModifiers
-                    []
-                    [ column columnModifiers
-                        []
-                        [ newTableScreenButton
-                        ]
-                    , column columnModifiers
-                        []
-                        [ joinTableScreenButton
-                        ]
-                    ]
-                ]
-            ]
+        ]
+    ]
 
 
 myButtonModifiers : ButtonModifiers msg
@@ -111,32 +68,9 @@ myButtonModifiers =
     { buttonModifiers | rounded = False, color = Info }
 
 
-newTableScreenButton : Html Msg
-newTableScreenButton =
-    button myButtonModifiers [ fullWidth, onClick EnterNewTableScreen ] [ text "New Table" ]
-
-
-joinTableScreenButton : Html Msg
-joinTableScreenButton =
-    button myButtonModifiers [ fullWidth, onClick EnterJoinTableScreen ] [ text "Join Table" ]
-
-
 newTableButton : Html Msg
 newTableButton =
     button myButtonModifiers [ fullWidth, onClick RequestNewTable ] [ text "New Table" ]
-
-
-nameInput : Model -> Html Msg
-nameInput model =
-    controlInput controlInputModifiers
-        []
-        [ type_ "text"
-        , placeholder "enter NameTag"
-        , onInput NameChange
-        , Html.Attributes.autofocus True
-        , onKeyDown KeyDown
-        ]
-        []
 
 
 tableInput : Model -> Html Msg
@@ -173,15 +107,35 @@ viewLobby model =
                 ]
             ]
         , heroBody []
-            [ container []
-                [ section Spaced
-                    []
-                    [ playersListView model
-                    , startGame model
-                    ]
-                ]
+            [ lobbyView model
             ]
         ]
+
+
+lobbyView : Model -> Html Msg
+lobbyView model =
+    if model.hasEnteredName then
+        container []
+            [ section Spaced
+                []
+                [ playersListView model
+                , startGame model
+                ]
+            ]
+    else
+        container [] <| enterNameView model
+
+
+enterNameView : Model -> List (Html Msg)
+enterNameView model =
+    [ container []
+        [ button myButtonModifiers [ onClick ChooseName ] [ text "Pick Name" ]
+        ]
+    , br [] []
+    , container []
+        [ soloDrawingSpace model
+        ]
+    ]
 
 
 startGame : Model -> Html Msg
@@ -399,7 +353,7 @@ maybeListenForSoloMove model =
             , Pointer.onUp UpWithFreedom
             ]
     in
-    if isActivePlayer model || model.state.bigState == Welcome then
+    if isActivePlayer model || (model.state.bigState == Lobby && model.hasEnteredName == False) then
         case model.mouseDown of
             True ->
                 Pointer.onMove MoveWithFreedom :: defaultList
@@ -425,7 +379,7 @@ maybeListenForMove model =
             , Pointer.onUp Up
             ]
     in
-    if isActivePlayer model && model.state.littleState == Draw then
+    if isDrawing model || isWritingName model then
         case model.mouseDown of
             True ->
                 Pointer.onMove Move :: defaultList
@@ -434,6 +388,16 @@ maybeListenForMove model =
                 defaultList
     else
         []
+
+
+isDrawing : Model -> Bool
+isDrawing model =
+    isActivePlayer model && model.state.littleState == Draw
+
+
+isWritingName : Model -> Bool
+isWritingName model =
+    model.state.bigState == Lobby && model.hasEnteredName == False
 
 
 drawPainting : Model -> List (Svg msg)

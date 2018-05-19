@@ -70,7 +70,7 @@ initModelCmd windowWidth windowHeight socketServer =
             , connectedComputers = 0
             }
         , playerId = ""
-        , name = ""
+        , hasEnteredName = False
         }
 
 

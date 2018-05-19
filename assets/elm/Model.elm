@@ -28,9 +28,7 @@ type Msg
     | VoteFor String
     | GuessSubject
     | Validate Bool
-    | EnterNewTableScreen
-    | EnterJoinTableScreen
-    | NameChange String
+    | ChooseName
     | None
 
 
@@ -51,8 +49,7 @@ type LittleState
     | Vote
     | Tricky
     | Check
-    | JoinTableScreen
-    | CreateTableScreen
+    | WriteName
 
 
 type Role
@@ -91,7 +88,6 @@ type alias Player =
     , name : List Line
     , role : Role
     , color : String
-    , nameTagLines : List Line
     , paintLines : List Line
     , votedFor : Maybe String
     }
@@ -109,5 +105,5 @@ type alias Model =
     , currentSoloDrawing : List Line
     , offCanvas : Bool
     , drawingSpaceEdgePx : Float
-    , name : String
+    , hasEnteredName : Bool
     }

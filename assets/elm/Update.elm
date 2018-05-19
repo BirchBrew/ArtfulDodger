@@ -104,20 +104,8 @@ update msg model =
 
         JoinChannel topic ->
             let
-                linesAsEncodedStrings =
-                    List.map
-                        (\line ->
-                            List.map (\point -> Json.Encode.string point) line
-                        )
-                        model.currentSoloDrawing
-
-                payload =
-                    Json.Encode.object
-                        [ ( "name", Json.Encode.list <| List.map Json.Encode.list linesAsEncodedStrings )
-                        ]
-
                 channel =
-                    Phoenix.Channel.init topic |> Phoenix.Channel.withPayload payload
+                    Phoenix.Channel.init topic
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.join channel model.phxSocket
@@ -125,7 +113,7 @@ update msg model =
                 phxSocket_ =
                     Phoenix.Socket.on "update" topic UpdateState phxSocket
             in
-            ( { model | phxSocket = phxSocket_, currentLine = [], currentSoloDrawing = [] }
+            ( { model | phxSocket = phxSocket_ }
             , Cmd.map PhoenixMsg phxCmd
             )
 
@@ -259,44 +247,43 @@ update msg model =
             handleMouseUpWithFreedom model
 
         KeyDown key ->
-            if key == enterKeyCode then
-                case model.state.littleState of
-                    JoinTableScreen ->
-                        update (RequestJoinTable (Maybe.withDefault "" model.tableRequest)) model
-
-                    CreateTableScreen ->
-                        update RequestNewTable model
-
-                    _ ->
-                        ( model, Cmd.none )
+            if key == enterKeyCode && model.state.bigState == Welcome && model.hasEnteredName == False then
+                update (RequestJoinTable (Maybe.withDefault "" model.tableRequest)) model
             else
                 ( model, Cmd.none )
 
         Resize h w ->
             ( { model | drawingSpaceEdgePx = calculateDrawingSpaceEdgePx h w }, Cmd.none )
 
-        EnterNewTableScreen ->
+        ChooseName ->
             let
-                oldState =
-                    model.state
+                linesAsEncodedStrings =
+                    List.map
+                        (\line ->
+                            List.map (\point -> Json.Encode.string point) line
+                        )
+                        model.currentSoloDrawing
 
-                newState =
-                    { oldState | littleState = CreateTableScreen }
+                payload =
+                    Json.Encode.object
+                        [ ( "name", Json.Encode.list <| List.map Json.Encode.list linesAsEncodedStrings )
+                        ]
+
+                push =
+                    Phoenix.Push.init "choose_name" (Maybe.withDefault "" model.tableTopic)
+                        |> Phoenix.Push.withPayload payload
+
+                ( phxSocket, phxCmd ) =
+                    Phoenix.Socket.push push model.phxSocket
             in
-            ( { model | state = newState }, Cmd.none )
-
-        EnterJoinTableScreen ->
-            let
-                oldState =
-                    model.state
-
-                newState =
-                    { oldState | littleState = JoinTableScreen }
-            in
-            ( { model | state = newState }, Cmd.none )
-
-        NameChange name ->
-            ( { model | name = name }, Cmd.none )
+            ( { model
+                | phxSocket = phxSocket
+                , currentSoloDrawing = []
+                , currentLine = []
+                , hasEnteredName = True
+              }
+            , Cmd.map PhoenixMsg phxCmd
+            )
 
 
 transformInput : String -> String
