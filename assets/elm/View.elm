@@ -51,7 +51,7 @@ welcomeView model =
                     []
                     [ column columnModifiers
                         []
-                        [ nameInput model
+                        [ soloDrawingSpace model
                         ]
                     , column columnModifiers
                         []
@@ -73,7 +73,7 @@ welcomeView model =
                     []
                     [ column columnModifiers
                         []
-                        [ nameInput model
+                        [ soloDrawingSpace model
                         ]
                     , column columnModifiers
                         []
@@ -174,10 +174,10 @@ viewLobby model =
             ]
         , heroBody []
             [ container []
-                [ nameTagView model
-                , section Spaced
+                [ section Spaced
                     []
-                    [ startGame model
+                    [ playersListView model
+                    , startGame model
                     ]
                 ]
             ]
@@ -223,7 +223,7 @@ littleStateView model =
             if isGameMaster model || hasVoted model == True then
                 []
             else
-                [ votesView model ]
+                [ text "" ]
 
         Tricky ->
             if isTrickster model then
@@ -398,7 +398,7 @@ maybeListenForSoloMove model =
             , Pointer.onUp UpWithFreedom
             ]
     in
-    if isActivePlayer model then
+    if isActivePlayer model || model.state.bigState == Welcome then
         case model.mouseDown of
             True ->
                 Pointer.onMove MoveWithFreedom :: defaultList
@@ -501,6 +501,24 @@ svgLinesFolder lines ( f, s ) =
             Debug.crash "Like in Poker, you can't fold everything"
 
 
+playersListView : Model -> Html msg
+playersListView model =
+    div []
+        [ h2 [] [ text "Painters" ]
+        , ul [] <| displayPlayer (Dict.values model.state.players)
+        ]
+
+
+displayPlayer : List Player -> List (Html.Html msg)
+displayPlayer players =
+    List.map
+        (\player ->
+            li []
+                []
+        )
+        players
+
+
 pointString : List Point -> String
 pointString points =
     String.join " " points
@@ -509,23 +527,6 @@ pointString points =
 disableContextMenu : a -> Msg
 disableContextMenu event =
     None
-
-
-nameTagView : Model -> Html msg
-nameTagView model =
-    section Spaced
-        []
-        (title H2 [] [ text "Painters" ]
-            :: displayNameTags model.state.players
-        )
-
-
-votesView : Model -> Html Msg
-votesView model =
-    div []
-        [ h2 [] [ text "Who is the Dodgy Artist?" ]
-        , ul [] <| (playersExceptMeAndGameMaster model |> playerButtons)
-        ]
 
 
 playersExceptMeAndGameMaster : Model -> Dict.Dict String Player
@@ -543,55 +544,6 @@ removeGameMaster players =
             List.filter (\player -> (player |> Tuple.second |> .role) == GameMaster) playerList |> List.head
     in
     Dict.remove (gameMaster |> guaranteeJust |> Tuple.first) players
-
-
-playerButtons : Dict.Dict String Player -> List (Html Msg)
-playerButtons players =
-    List.map
-        (\( playerId, playerRecord ) ->
-            button myButtonModifiers
-                [ onClick (VoteFor playerId) ]
-                [ text <| playerRecord.name
-                ]
-        )
-        (Dict.toList
-            players
-        )
-
-
-playersListView : Model -> Html msg
-playersListView model =
-    div []
-        [ h2 [] [ text "Painters" ]
-        , ul [] <| displayPlayer (Dict.values model.state.players)
-        ]
-
-
-displayPlayer : List Player -> List (Html.Html msg)
-displayPlayer players =
-    List.map
-        (\player ->
-            li []
-                [ text ("Name: " ++ player.name)
-                , ul
-                    []
-                    [ li [] [ text ("Role: " ++ toString player.role) ]
-                    , li [] [ text ("Seat: " ++ toString player.seat) ]
-                    ]
-                ]
-        )
-        players
-
-
-displayNameTags : Dict.Dict String Player -> List (Html.Html msg)
-displayNameTags playerMap =
-    List.map
-        (\{ name } ->
-            div []
-                [ tag { tagModifiers | color = Warning } [] [ text name ]
-                ]
-        )
-        (Dict.values playerMap)
 
 
 roleView : Model -> Html Msg

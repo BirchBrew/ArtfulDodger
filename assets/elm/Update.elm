@@ -104,9 +104,17 @@ update msg model =
 
         JoinChannel topic ->
             let
+
+                linesAsEncodedStrings =
+                    List.map
+                        (\line ->
+                            List.map (\point -> Json.Encode.string point) line
+                        )
+                        model.currentSoloDrawing
+
                 payload =
                     Json.Encode.object
-                        [ ( "name", Json.Encode.string model.name )
+                        [ ( "name", Json.Encode.list <| List.map Json.Encode.list linesAsEncodedStrings )
                         ]
 
                 channel =

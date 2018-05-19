@@ -88,7 +88,7 @@ type alias TableState =
 
 type alias Player =
     { seat : Int
-    , name : String
+    , name : List Line
     , role : Role
     , color : String
     , nameTagLines : List Line

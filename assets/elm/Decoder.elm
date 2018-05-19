@@ -102,7 +102,7 @@ playerDecoder : Json.Decode.Decoder Player
 playerDecoder =
     Json.Decode.succeed Player
         |> Json.Decode.Extra.andMap (Json.Decode.field "seat" Json.Decode.int)
-        |> Json.Decode.Extra.andMap (Json.Decode.field "name" Json.Decode.string)
+        |> Json.Decode.Extra.andMap (Json.Decode.field "name" <| Json.Decode.list lineDecoder)
         |> Json.Decode.Extra.andMap (Json.Decode.field "role" roleDecoder)
         |> Json.Decode.Extra.andMap (Json.Decode.field "color" Json.Decode.string)
         |> Json.Decode.Extra.andMap (Json.Decode.field "name_tag_lines" <| Json.Decode.list lineDecoder)
