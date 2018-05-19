@@ -289,12 +289,19 @@ sharedDrawingSpace model =
 
 soloDrawingSpace : Model -> Html Msg
 soloDrawingSpace model =
-    drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 1.0 (drawLines (model.currentLine :: model.currentSoloDrawing)) model
+    let
+        myColor =
+            getColor model
+
+        lines =
+            drawLines (model.currentLine :: model.currentSoloDrawing) myColor
+    in
+    drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 1.0 lines model
 
 
-nameTagViewingSpace : Model -> List Line -> Html Msg
-nameTagViewingSpace model lines =
-    drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.1 (drawLines lines) model
+nameTagViewingSpace : Model -> List Line -> String -> Html Msg
+nameTagViewingSpace model lines color =
+    drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.1 (drawLines lines color) model
 
 
 viewSubject : Model -> Html Msg
@@ -302,7 +309,14 @@ viewSubject model =
     if isTrickster model then
         text ""
     else
-        drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.2 (drawLines model.state.subject) model
+        let
+            gameMasterColor =
+                model.state.players |> Dict.toList |> getGameMaster |> .color
+
+            lines =
+                drawLines (model.currentLine :: model.currentSoloDrawing) gameMasterColor
+        in
+        drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 0.2 lines model
 
 
 drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> List (Svg Msg) -> Model -> Html Msg
@@ -417,12 +431,12 @@ drawPainting { state } =
     firstLines ++ secondLines
 
 
-drawLines : List Line -> List (Svg msg)
-drawLines lines =
+drawLines : List Line -> String -> List (Svg msg)
+drawLines lines color =
     let
         svgLines =
             -- TODO use player color here instead!
-            svgLinesHelper "black" lines
+            svgLinesHelper color lines
     in
     svgLines
 
@@ -484,7 +498,7 @@ displayPlayers model =
     List.map
         (\player ->
             li []
-                [ nameTagViewingSpace model player.name ]
+                [ nameTagViewingSpace model player.name player.color ]
         )
     <|
         getPlayersWithNames model
@@ -511,10 +525,25 @@ removeGameMaster players =
         playerList =
             players |> Dict.toList
 
-        gameMaster =
-            List.filter (\player -> (player |> Tuple.second |> .role) == GameMaster) playerList |> List.head
+        gameMasterIndex =
+            getGameMasterIndex playerList
     in
-    Dict.remove (gameMaster |> guaranteeJust |> Tuple.first) players
+    Dict.remove gameMasterIndex players
+
+
+getGameMasterIndex : List ( String, Player ) -> String
+getGameMasterIndex playerList =
+    playerList |> getGameMasterTuple |> Tuple.first
+
+
+getGameMaster : List ( String, Player ) -> Player
+getGameMaster playerList =
+    playerList |> getGameMasterTuple |> Tuple.second
+
+
+getGameMasterTuple : List ( String, Player ) -> ( String, Player )
+getGameMasterTuple playerList =
+    (List.filter (\player -> (player |> Tuple.second |> .role) == GameMaster) playerList |> List.head) |> guaranteeJust
 
 
 roleView : Model -> Html Msg
@@ -525,6 +554,11 @@ roleView model =
 getRole : Model -> Role
 getRole model =
     Dict.get model.playerId model.state.players |> guaranteeJust |> .role
+
+
+getColor : Model -> String
+getColor model =
+    Dict.get model.playerId model.state.players |> guaranteeJust |> .color
 
 
 isGameMaster : Model -> Bool
