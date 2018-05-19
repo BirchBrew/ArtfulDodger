@@ -178,7 +178,7 @@ littleStateView model =
             if isGameMaster model || hasVoted model == True then
                 []
             else
-                [ text "" ]
+                [ text "Click the player you think was the trickster!" ]
 
         Tricky ->
             if isTrickster model then
@@ -299,9 +299,9 @@ soloDrawingSpace model =
     drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 1.0 lines model
 
 
-nameTagViewingSpace : Model -> List Line -> String -> Html Msg
-nameTagViewingSpace model lines color =
-    drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.1 (drawLines lines color) model
+nameTagViewingSpace : Model -> Player -> String -> Html Msg
+nameTagViewingSpace model player player_id =
+    drawingSpaceForVoting (readOnlyRenderAttributes model) 0.1 (drawLines player.name player.color) model player_id
 
 
 viewSubject : Model -> Html Msg
@@ -332,6 +332,25 @@ drawingSpaceWithRatio attributes ratio lines model =
             , ( "width", pxStr )
             , ( "background-color", "#f5f5f5" )
             ]
+        ]
+        [ svg attributes lines
+        ]
+
+
+drawingSpaceForVoting : List (Html.Attribute Msg) -> Float -> List (Svg Msg) -> Model -> String -> Html Msg
+drawingSpaceForVoting attributes ratio lines model player_id =
+    let
+        pxStr =
+            toString (model.drawingSpaceEdgePx * ratio) ++ "px"
+    in
+    box
+        [ style
+            [ ( "padding", "0px" )
+            , ( "height", pxStr )
+            , ( "width", pxStr )
+            , ( "background-color", "#f5f5f5" )
+            ]
+        , onClick <| VoteFor player_id
         ]
         [ svg attributes lines
         ]
@@ -485,23 +504,28 @@ playersListView model =
 
 getPlayersWithNames : Model -> List Player
 getPlayersWithNames model =
-    Dict.values model.state.players |> List.filter hasName
+    getPlayersWithNamesTuple model |> List.map Tuple.second
 
 
-hasName : Player -> Bool
-hasName player =
+getPlayersWithNamesTuple : Model -> List ( String, Player )
+getPlayersWithNamesTuple model =
+    Dict.toList model.state.players |> List.filter hasName
+
+
+hasName : ( String, Player ) -> Bool
+hasName ( id, player ) =
     player.name /= []
 
 
 displayPlayers : Model -> List (Html.Html Msg)
 displayPlayers model =
     List.map
-        (\player ->
+        (\( player_id, player ) ->
             li []
-                [ nameTagViewingSpace model player.name player.color ]
+                [ nameTagViewingSpace model player player_id ]
         )
     <|
-        getPlayersWithNames model
+        getPlayersWithNamesTuple model
 
 
 pointString : List Point -> String
