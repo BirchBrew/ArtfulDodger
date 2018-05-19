@@ -40,8 +40,11 @@ init { windowWidth, windowHeight, socketServer } =
 initPhxSocket : String -> Phoenix.Socket.Socket Msg
 initPhxSocket socketServer =
     Phoenix.Socket.init socketServer
-        -- TODO remove this `withDebug` before going live
-        |> Phoenix.Socket.withDebug
+
+
+
+-- TODO remove this `withDebug` before going live
+-- |> Phoenix.Socket.withDebug
 
 
 initModelCmd : Int -> Int -> String -> ( Model, Cmd Msg )
