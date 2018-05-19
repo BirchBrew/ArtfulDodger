@@ -501,22 +501,27 @@ svgLinesFolder lines ( f, s ) =
             Debug.crash "Like in Poker, you can't fold everything"
 
 
-playersListView : Model -> Html msg
+playersListView : Model -> Html Msg
 playersListView model =
     div []
         [ h2 [] [ text "Painters" ]
-        , ul [] <| displayPlayer (Dict.values model.state.players)
+        , ul [] <| displayPlayer model
         ]
 
 
-displayPlayer : List Player -> List (Html.Html msg)
-displayPlayer players =
+
+-- displayPlayer : List Player -> List (Html.Html msg)
+
+
+displayPlayer : Model -> List (Html.Html Msg)
+displayPlayer model =
     List.map
         (\player ->
             li []
-                []
+                [ nameTagViewingSpace model ]
         )
-        players
+    <|
+        Dict.values model.state.players
 
 
 pointString : List Point -> String
