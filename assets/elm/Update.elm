@@ -104,7 +104,6 @@ update msg model =
 
         JoinChannel topic ->
             let
-
                 linesAsEncodedStrings =
                     List.map
                         (\line ->
@@ -126,7 +125,7 @@ update msg model =
                 phxSocket_ =
                     Phoenix.Socket.on "update" topic UpdateState phxSocket
             in
-            ( { model | phxSocket = phxSocket_ }
+            ( { model | phxSocket = phxSocket_, currentLine = [], currentSoloDrawing = [] }
             , Cmd.map PhoenixMsg phxCmd
             )
 
