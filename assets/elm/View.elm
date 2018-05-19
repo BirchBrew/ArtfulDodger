@@ -314,9 +314,9 @@ viewSubject model =
                 model.state.players |> Dict.toList |> getGameMaster |> .color
 
             lines =
-                drawLines (model.currentLine :: model.currentSoloDrawing) gameMasterColor
+                drawLines model.state.subject gameMasterColor
         in
-        drawingSpaceWithRatio (soloDrawingSpaceAttributes model) 0.2 lines model
+        drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.2 lines model
 
 
 drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> List (Svg Msg) -> Model -> Html Msg
