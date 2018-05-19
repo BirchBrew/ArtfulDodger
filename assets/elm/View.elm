@@ -186,7 +186,7 @@ viewLobby model =
 
 startGame : Model -> Html Msg
 startGame model =
-    if isActivePlayer model && (model.state.players |> Dict.size) >= 3 then
+    if isActivePlayer model && (getPlayersWithNames model |> List.length) >= 3 then
         button myButtonModifiers [ onClick PushStartGame ] [ text "go to Game" ]
     else
         text ""
@@ -497,7 +497,7 @@ playersListView : Model -> Html Msg
 playersListView model =
     div []
         [ h2 [] [ text "Painters" ]
-        , ul [] <| displayPlayer model
+        , ul [] <| displayPlayers model
         ]
 
 
@@ -505,15 +505,25 @@ playersListView model =
 -- displayPlayer : List Player -> List (Html.Html msg)
 
 
-displayPlayer : Model -> List (Html.Html Msg)
-displayPlayer model =
+getPlayersWithNames : Model -> List Player
+getPlayersWithNames model =
+    Dict.values model.state.players |> List.filter hasName
+
+
+hasName : Player -> Bool
+hasName player =
+    player.name /= []
+
+
+displayPlayers : Model -> List (Html.Html Msg)
+displayPlayers model =
     List.map
         (\player ->
             li []
                 [ nameTagViewingSpace model player.name ]
         )
     <|
-        Dict.values model.state.players
+        getPlayersWithNames model
 
 
 pointString : List Point -> String
