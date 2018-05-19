@@ -55,8 +55,12 @@ welcomeView model =
                 ]
             , column columnModifiers
                 []
-                [ tableInput model
-                , joinTableButton model
+                [ connectedFields Left
+                    []
+                    [ tableInput model
+                    , joinTableButton model
+                    ]
+                , controlHelp Danger [] [ text model.errorText ]
                 ]
             ]
         ]
@@ -167,7 +171,7 @@ littleStateView : Model -> List (Html Msg)
 littleStateView model =
     case model.state.littleState of
         Pick ->
-            choicesView model
+            [ container [] <| choicesView model ]
 
         Draw ->
             [ viewSubject model
@@ -261,18 +265,6 @@ choicesView model =
             [ soloDrawingSpace model
             ]
         ]
-        -- [ columns columnsModifiers
-        --     []
-        --     [ column columnModifiers
-        --         []
-        --         [ button myButtonModifiers [ onClick ChooseSubject ] [ text "Submit Subject" ]
-        --         ]
-        --     , column columnModifiers
-        --         []
-        --         [ soloDrawingSpace model
-        --         ]
-        --     ]
-        -- ]
     else
         []
 
