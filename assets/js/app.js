@@ -23,7 +23,7 @@ import "phoenix_html"
 import Elm from "./elm"
 
 Elm.Main.fullscreen({
-  socketServer: `ws://${window.location.host}/socket/websocket`,
+  socketServer: `wss://${window.location.host}/socket/websocket`,
   windowWidth: window.innerWidth,
   windowHeight: window.innerHeight,
 });
