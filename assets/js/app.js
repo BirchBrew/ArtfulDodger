@@ -23,7 +23,12 @@ import "phoenix_html"
 import Elm from "./elm"
 
 Elm.Main.fullscreen({
-  socketServer: `wss://${window.location.host}/socket/websocket`,
+  socketServer: `${protocol()}://${location.host}/socket/websocket`,
   windowWidth: window.innerWidth,
   windowHeight: window.innerHeight,
 });
+
+// Taken from the socket.js client of Phoenix!
+function protocol() {
+  return location.protocol.match(/^https/) ? "wss" : "ws";
+}
