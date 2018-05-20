@@ -16,7 +16,7 @@ import Model exposing (BigState(..), Line, LittleState(..), Model, Msg(..), Play
 import Mouse exposing (onContextMenu)
 import Pointer
 import Svg exposing (Svg, polyline, svg)
-import Svg.Attributes exposing (fill, points, stroke, strokeWidth, viewBox)
+import Svg.Attributes exposing (fill, pointerEvents, points, stroke, strokeWidth, viewBox)
 
 
 view : Model -> Html Msg
@@ -469,7 +469,7 @@ svgLinesHelper color lines =
                     Nothing
 
                 _ ->
-                    Just <| polyline [ points (pointString line), stroke color, strokeWidth "1em", fill "none" ] []
+                    Just <| polyline [ pointerEvents "none", points (pointString line), stroke color, strokeWidth "1em", fill "none" ] []
         )
         lines
 
