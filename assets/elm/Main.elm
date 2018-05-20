@@ -65,6 +65,7 @@ initModelCmd windowWidth windowHeight socketServer =
             { bigState = Welcome
             , littleState = Pick
             , subject = []
+            , guess = []
             , activePlayers = []
             , winner = Nothing
             , players = Dict.empty

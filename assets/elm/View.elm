@@ -179,28 +179,48 @@ littleStateView model =
             ]
 
         Vote ->
-            if isGameMaster model || hasVoted model == True then
-                []
-            else
-                [ text "Click the player you think was the trickster!" ]
+            let
+                extraParts =
+                    if isGameMaster model || hasVoted model == True then
+                        []
+                    else
+                        [ text "Click the player you think was the trickster!" ]
+            in
+            extraParts ++ [ viewFinishedPainting model ]
 
         Tricky ->
             if isTrickster model then
-                [ button myButtonModifiers [ onClick GuessSubject ] [ text "Guess Topic" ] ]
+                tricksterPad model
             else
                 []
 
         Check ->
-            if isGameMaster model then
-                [ text "Was the trickster's guess correct?"
-                , button myButtonModifiers [ onClick <| Validate True ] [ text "Yes" ]
-                , button myButtonModifiers [ onClick <| Validate False ] [ text "No" ]
-                ]
-            else
-                []
+            let
+                extraParts =
+                    if isGameMaster model then
+                        [ text "Was the trickster's guess correct?"
+                        , button myButtonModifiers [ onClick <| Validate True ] [ text "Yes" ]
+                        , button myButtonModifiers [ onClick <| Validate False ] [ text "No" ]
+                        ]
+                    else
+                        []
+            in
+            extraParts ++ [ viewGuess model ]
 
         _ ->
             [ text "" ]
+
+
+tricksterPad : Model -> List (Html Msg)
+tricksterPad model =
+    [ container []
+        [ button myButtonModifiers [ onClick GuessSubject ] [ text "Guess Topic?" ]
+        ]
+    , br [] []
+    , container []
+        [ soloDrawingSpace model
+        ]
+    ]
 
 
 viewRest : Model -> Html Msg
@@ -216,7 +236,11 @@ viewRest model =
             viewGame model
 
         End ->
-            displayWinner model
+            div []
+                [ displayWinner model
+                , viewSubject model
+                , viewFinishedPainting model
+                ]
 
 
 displayWinner : Model -> Html msg
@@ -237,16 +261,6 @@ guaranteeJust noLongerOptional =
 getFirst : List String -> String
 getFirst players =
     guaranteeJust (players |> List.head)
-
-
-displayActivePlayers : Model -> List (Html Msg)
-displayActivePlayers model =
-    List.map
-        (\player_id ->
-            li []
-                [ text player_id ]
-        )
-        model.state.activePlayers
 
 
 isActivePlayer : Model -> Bool
@@ -279,6 +293,11 @@ sharedDrawingSpace model =
     drawingSpaceWithRatio (sharedDrawingSpaceAttributes model) 1.0 (drawPainting model) model
 
 
+viewFinishedPainting : Model -> Html Msg
+viewFinishedPainting model =
+    drawingSpaceWithRatio (readOnlyRenderAttributes model) 1.0 (drawPainting model) model
+
+
 soloDrawingSpace : Model -> Html Msg
 soloDrawingSpace model =
     let
@@ -309,6 +328,18 @@ viewSubject model =
                 drawLines model.state.subject gameMasterColor
         in
         drawingSpaceWithRatio (readOnlyRenderAttributes model) 0.2 lines model
+
+
+viewGuess : Model -> Html Msg
+viewGuess model =
+    let
+        tricksterColor =
+            model.state.players |> Dict.toList |> getTrickster |> .color
+
+        lines =
+            drawLines model.state.guess tricksterColor
+    in
+    drawingSpaceWithRatio (readOnlyRenderAttributes model) 1.0 lines model
 
 
 drawingSpaceWithRatio : List (Html.Attribute Msg) -> Float -> List (Svg Msg) -> Model -> Html Msg
@@ -560,6 +591,16 @@ getGameMaster playerList =
 getGameMasterTuple : List ( String, Player ) -> ( String, Player )
 getGameMasterTuple playerList =
     (List.filter (\player -> (player |> Tuple.second |> .role) == GameMaster) playerList |> List.head) |> guaranteeJust
+
+
+getTricksterTuple : List ( String, Player ) -> ( String, Player )
+getTricksterTuple playerList =
+    (List.filter (\player -> (player |> Tuple.second |> .role) == Trickster) playerList |> List.head) |> guaranteeJust
+
+
+getTrickster : List ( String, Player ) -> Player
+getTrickster playerList =
+    playerList |> getTricksterTuple |> Tuple.second
 
 
 roleView : Model -> Html Msg

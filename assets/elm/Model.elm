@@ -74,6 +74,7 @@ type alias TableState =
     { bigState : BigState
     , littleState : LittleState
     , subject : List Line
+    , guess : List Line
     , activePlayers : List String
     , winner : Maybe String
     , players : Dict.Dict String Player

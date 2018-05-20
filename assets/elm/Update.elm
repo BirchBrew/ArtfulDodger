@@ -150,14 +150,29 @@ update msg model =
 
         GuessSubject ->
             let
+                linesAsEncodedStrings =
+                    List.map
+                        (\line ->
+                            List.map (\point -> Json.Encode.string point) line
+                        )
+                        model.currentSoloDrawing
+
+                payload =
+                    Json.Encode.object
+                        [ ( "subject", Json.Encode.list <| List.map Json.Encode.list linesAsEncodedStrings )
+                        ]
+
                 push =
                     Phoenix.Push.init "guess_subject" (Maybe.withDefault "" model.tableTopic)
+                        |> Phoenix.Push.withPayload payload
 
                 ( phxSocket, phxCmd ) =
                     Phoenix.Socket.push push model.phxSocket
             in
             ( { model
                 | phxSocket = phxSocket
+                , currentSoloDrawing = []
+                , currentLine = []
               }
             , Cmd.map PhoenixMsg phxCmd
             )

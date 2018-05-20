@@ -3,6 +3,7 @@ defmodule FakeArtist.State do
     big_state: :lobby,
     little_state: :pick,
     subject: [],
+    guess: [],
     active_players: [],
     winner: nil,
     players: %{},
@@ -81,8 +82,8 @@ defmodule FakeArtist.Table do
     GenServer.call(pid, {:vote_for, {voted_for, voted_by}})
   end
 
-  def guess_subject(pid) do
-    GenServer.call(pid, :guess_subject)
+  def guess_subject(pid, subject) do
+    GenServer.call(pid, {:guess_subject, subject})
   end
 
   def validate_guess(pid, is_correct) do
@@ -116,7 +117,7 @@ defmodule FakeArtist.Table do
 
     state =
       if connected_computers == 0 do
-        %{state | active_players: [id]}
+        %FakeArtist.State{state | active_players: [id]}
       else
         state
       end
@@ -216,7 +217,7 @@ defmodule FakeArtist.Table do
 
     player_with_name = %{player | name: name}
 
-    state = %{state | players: Map.put(players, id, player_with_name)}
+    state = %FakeArtist.State{state | players: Map.put(players, id, player_with_name)}
 
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
@@ -239,7 +240,7 @@ defmodule FakeArtist.Table do
         end
       end)
 
-    state = %{state | players: players}
+    state = %FakeArtist.State{state | players: players}
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
     {:reply, :ok, state}
@@ -259,7 +260,7 @@ defmodule FakeArtist.Table do
     player_paint_lines = [[] | paint_lines]
 
     players = %{players | id => %{player | paint_lines: player_paint_lines}}
-    state = %{state | players: players}
+    state = %FakeArtist.State{state | players: players}
 
     state =
       if remaining_turns == 1 do
@@ -291,7 +292,7 @@ defmodule FakeArtist.Table do
         }
       ) do
     players = update_player_vote(players, voted_by, voted_for)
-    state = %{state | players: players}
+    state = %FakeArtist.State{state | players: players}
 
     trickster_is_picked = is_trickster_picked?(players)
 
@@ -301,7 +302,12 @@ defmodule FakeArtist.Table do
 
         if trickster_is_picked do
           Logger.info(fn -> "Trickster was chosen, so now he must choose..." end)
-          %{state | little_state: :tricky}
+
+          %FakeArtist.State{
+            state
+            | little_state: :tricky,
+              active_players: [get_trickster_id(players)]
+          }
         else
           Logger.info(fn -> "Trickster wasn't chosen, so he wins!" end)
 
@@ -321,13 +327,13 @@ defmodule FakeArtist.Table do
   end
 
   def handle_call(
-        :guess_subject,
+        {:guess_subject, subject},
         _from,
         state = %{
           table_name: table_name
         }
       ) do
-    state = %{state | little_state: :check}
+    state = %FakeArtist.State{state | little_state: :check, guess: subject}
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
     {:reply, :ok, state}
@@ -342,9 +348,9 @@ defmodule FakeArtist.Table do
       ) do
     state =
       if is_correct do
-        %{state | winner: @trickster_and_gm_win, big_state: :end}
+        %FakeArtist.State{state | winner: @trickster_and_gm_win, big_state: :end}
       else
-        %{state | winner: @players_win, big_state: :end}
+        %FakeArtist.State{state | winner: @players_win, big_state: :end}
       end
 
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)

@@ -43,8 +43,8 @@ defmodule FakeArtistWeb.TableChannel do
     {:noreply, socket}
   end
 
-  def handle_in("guess_subject", _, socket) do
-    FakeArtist.Table.guess_subject(socket.assigns.table)
+  def handle_in("guess_subject", %{"subject" => subject}, socket) do
+    FakeArtist.Table.guess_subject(socket.assigns.table, subject)
     {:noreply, socket}
   end
 
