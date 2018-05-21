@@ -20,6 +20,8 @@ config :fake_artist, FakeArtistWeb.Endpoint,
     ]
   ]
 
+config :logger, level: :error
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

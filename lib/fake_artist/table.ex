@@ -10,7 +10,8 @@ defmodule FakeArtist.State do
     table_name: nil,
     remaining_turns: 0,
     connected_computers: 0,
-    colors: []
+    colors: [],
+    updates_pending: false
   )
 end
 
@@ -30,7 +31,9 @@ defmodule FakeArtist.Table do
 
   require Logger
 
-  @num_lines_per_artist 2
+  @ticks_per_second 15
+  @tick_timer_in_ms div(1 * 1000, @ticks_per_second)
+
   # http://www.draketo.de/light/english/websafe-colors-colorblind-safe
   # took out the yellow because it was too hard to see against the white bg
   @colors ~w(
@@ -176,6 +179,9 @@ defmodule FakeArtist.Table do
         players: players
     }
 
+    # we'll batch some of the "near-real-time" updates, like collaborative drawing,
+    # for performance reasons
+    :timer.send_interval(@tick_timer_in_ms, :update_tick)
     FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
 
     IO.inspect(state)
@@ -192,10 +198,12 @@ defmodule FakeArtist.Table do
           table_name: table_name
         }
       ) do
+    num_lines_per_artist = 2
+
     state = %{
       state
       | active_players: get_active_players(players, active_players),
-        remaining_turns: ((players |> Enum.count()) - 1) * @num_lines_per_artist,
+        remaining_turns: ((players |> Enum.count()) - 1) * num_lines_per_artist,
         little_state: :draw,
         subject: subject
     }
@@ -228,8 +236,7 @@ defmodule FakeArtist.Table do
         {:paint_line, id, line},
         _from,
         state = %{
-          players: players,
-          table_name: table_name
+          players: players
         }
       ) do
     players =
@@ -240,8 +247,7 @@ defmodule FakeArtist.Table do
         end
       end)
 
-    state = %FakeArtist.State{state | players: players}
-    FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+    state = %FakeArtist.State{state | players: players, updates_pending: true}
 
     {:reply, :ok, state}
   end
@@ -377,6 +383,21 @@ defmodule FakeArtist.Table do
         | connected_computers: connected_computers - 1
       }
 
+      {:noreply, state}
+    end
+  end
+
+  def handle_info(
+        :update_tick,
+        %FakeArtist.State{
+          table_name: table_name,
+          updates_pending: updates_pending
+        } = state
+      ) do
+    if updates_pending do
+      FakeArtistWeb.Endpoint.broadcast("table:#{table_name}", "update", state)
+      {:noreply, %FakeArtist.State{state | updates_pending: false}}
+    else
       {:noreply, state}
     end
   end
