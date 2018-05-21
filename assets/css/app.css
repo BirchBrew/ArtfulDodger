@@ -1,13 +1,17 @@
 /* This file is for your main application css. */
 
+/* Mobile Specific CSS */
+
 @media screen and (max-width: 768px) {
   #names {
-    height: 33%;
+    height: 30%;
   }
   #art {
-    height: 67%;
+    height: 70%;
   }
 }
+
+/* Non-Mobile Specific CSS */
 
 @media screen and (min-width: 769px) {
   #names {
@@ -20,4 +24,8 @@
 
 div {
   border: 1px solid black;
+}
+
+body {
+  background-color: black;
 }

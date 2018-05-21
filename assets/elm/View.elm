@@ -269,7 +269,9 @@ viewGeneralLayout model =
             --         }
             -- }
             columnModifiers
-            [ id "art" ]
+            [ id "art"
+            , style [ ( "background-color", "white" ) ]
+            ]
             [ columns { columnsModifiers | gap = Gap0, display = MobileAndBeyond }
                 [ style [ ( "height", "100%" ) ] ]
                 [ startGame model ]
@@ -336,7 +338,7 @@ soloDrawingSpace model =
 
 nameTagViewingSpace : Model -> Player -> String -> Bool -> Html Msg
 nameTagViewingSpace model player player_id shouldHighlight =
-    drawingSpaceForVoting (readOnlyRenderAttributes model shouldHighlight) 0.1 (drawLines player.name player.color) model player_id
+    drawingSpaceForVoting (readOnlyRenderAttributes model shouldHighlight) 0.2 (drawLines player.name player.color) model player_id
 
 
 viewSubject : Model -> Html Msg
@@ -543,10 +545,6 @@ playersListView model =
     div []
         [ columns columnsModifiers [] <| displayPlayers model
         ]
-
-
-
--- displayPlayer : List Player -> List (Html.Html msg)
 
 
 getPlayersWithNames : Model -> List Player
