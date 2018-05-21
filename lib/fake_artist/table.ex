@@ -429,6 +429,7 @@ defmodule FakeArtist.Table do
       Enum.reduce(players, %{}, fn {_player_id, player}, acc ->
         Map.update(acc, player.voted_for, 1, &(&1 + 1))
       end)
+      |> Map.delete(nil)
 
     {player_id, num_votes} = Enum.max_by(map_of_counts, fn {_k, v} -> v end)
 
