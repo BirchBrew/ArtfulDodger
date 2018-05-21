@@ -492,7 +492,7 @@ drawPainting model =
         currentLine =
             svgLinesHelper (getColor model) [ model.currentLine ]
     in
-    currentLine ++ firstLines ++ secondLines
+    firstLines ++ secondLines ++ currentLine
 
 
 drawLines : List Line -> String -> List (Svg msg)
