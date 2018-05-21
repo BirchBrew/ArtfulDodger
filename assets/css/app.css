@@ -1,1 +1,23 @@
 /* This file is for your main application css. */
+
+@media screen and (max-width: 768px) {
+  #names {
+    height: 33%;
+  }
+  #art {
+    height: 67%;
+  }
+}
+
+@media screen and (min-width: 769px) {
+  #names {
+    height: 100%;
+  }
+  #art {
+    height: 100%;
+  }
+}
+
+div {
+  border: 1px solid black;
+}

@@ -1,7 +1,7 @@
 module View exposing (view)
 
 import Bulma.CDN exposing (stylesheet)
-import Bulma.Columns exposing (column, columnModifiers, columns, columnsModifiers)
+import Bulma.Columns exposing (Display(..), Gap(..), column, columnModifiers, columns, columnsModifiers)
 import Bulma.Elements exposing (..)
 import Bulma.Form exposing (..)
 import Bulma.Layout exposing (..)
@@ -9,7 +9,7 @@ import Bulma.Modifiers exposing (Color(Danger, Dark, Info, Warning), HorizontalA
 import Constant exposing (viewBoxLength)
 import Dict
 import Html exposing (Html, br, div, h2, li, main_, text, ul)
-import Html.Attributes exposing (attribute, placeholder, style, type_)
+import Html.Attributes exposing (attribute, class, id, placeholder, style, type_)
 import Html.Events exposing (onClick, onInput)
 import Json.Decode
 import Model exposing (BigState(..), Line, LittleState(..), Model, Msg(..), Player, Point, Role(..))
@@ -24,7 +24,7 @@ view : Model -> Html Msg
 view model =
     Html.main_
         [ style
-            [ ( "height", "100%" )
+            [ ( "height", "100vh" )
             , ( "touch-action", "none" )
             ]
         ]
@@ -104,29 +104,18 @@ onKeyDown msgTag =
 
 viewLobby : Model -> Html Msg
 viewLobby model =
-    hero { heroModifiers | size = Large, color = Dark }
-        []
-        [ heroHead []
-            [ container []
-                [ title H3 [] [ text <| Maybe.withDefault "" model.tableTopic ]
-                ]
-            ]
-        , heroBody []
-            [ lobbyView model
-            ]
-        ]
+    lobbyView model
+
+
+viewLobbyTopicTitle : Model -> Html Msg
+viewLobbyTopicTitle model =
+    title H3 [] [ text <| Maybe.withDefault "" model.tableTopic ]
 
 
 lobbyView : Model -> Html Msg
 lobbyView model =
     if model.hasEnteredName then
-        container []
-            [ section Spaced
-                []
-                [ playersListView model
-                , startGame model
-                ]
-            ]
+        viewGeneralLayout model
     else
         container [] <| enterNameView model
 
@@ -243,6 +232,49 @@ viewRest model =
                 , viewSubject model
                 , viewFinishedPainting model
                 ]
+
+
+viewGeneralLayout : Model -> Html Msg
+viewGeneralLayout model =
+    columns { columnsModifiers | gap = Gap0 }
+        [ style [ ( "height", "100%" ) ] ]
+        [ column
+            columnModifiers
+            -- { columnModifiers
+            --     | widths =
+            --         { mobile = Just Bulma.Modifiers.Width4
+            --         , tablet = Just Bulma.Modifiers.Width4
+            --         , desktop = Just Bulma.Modifiers.Width4
+            --         , fullHD = Just Bulma.Modifiers.Width4
+            --         , widescreen = Just Bulma.Modifiers.Width4
+            --         }
+            -- }
+            [ id "names"
+            , class "is-one-third"
+            ]
+            [ columns { columnsModifiers | gap = Gap0, multiline = True }
+                [ style [ ( "height", "100%" ) ]
+                , class "is-mobile"
+                ]
+                (displayPlayers model)
+            ]
+        , column
+            -- { columnModifiers
+            --     | widths =
+            --         { mobile = Just Bulma.Modifiers.Width4
+            --         , tablet = Just Bulma.Modifiers.Width4
+            --         , desktop = Just Bulma.Modifiers.Width4
+            --         , fullHD = Just Bulma.Modifiers.Width4
+            --         , widescreen = Just Bulma.Modifiers.Width4
+            --         }
+            -- }
+            columnModifiers
+            [ id "art" ]
+            [ columns { columnsModifiers | gap = Gap0, display = MobileAndBeyond }
+                [ style [ ( "height", "100%" ) ] ]
+                [ startGame model ]
+            ]
+        ]
 
 
 displayWinner : Model -> Html msg
@@ -532,28 +564,17 @@ hasName ( id, player ) =
     player.name /= []
 
 
-displayPlayers : Model -> List (Html.Html Msg)
+displayPlayers : Model -> List (Html Msg)
 displayPlayers model =
     List.map
         (\( player_id, player ) ->
             let
                 shouldHighlight =
                     shouldHighlightPlayer model player_id
-
-                myColumnModifiers =
-                    { columnModifiers
-                        | widths =
-                            { mobile = Just Bulma.Modifiers.Width1
-                            , tablet = Just Bulma.Modifiers.Width1
-                            , desktop = Just Bulma.Modifiers.Width1
-                            , fullHD = Just Bulma.Modifiers.Width1
-                            , widescreen = Just Bulma.Modifiers.Width1
-                            }
-                    }
             in
             column
-                myColumnModifiers
-                []
+                columnModifiers
+                [ class "is-one-third" ]
                 [ nameTagViewingSpace model player player_id shouldHighlight ]
         )
     <|
