@@ -55,7 +55,7 @@ type LittleState
 type Role
     = GameMaster
     | Trickster
-    | BasicPlayer
+    | Artist
 
 
 type alias NameTag =

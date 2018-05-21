@@ -66,8 +66,8 @@ roleDecoder =
                     "trickster" ->
                         Json.Decode.succeed Trickster
 
-                    "player" ->
-                        Json.Decode.succeed BasicPlayer
+                    "artist" ->
+                        Json.Decode.succeed Artist
 
                     _ ->
                         Debug.crash "Unknown role"

@@ -18,7 +18,7 @@ defmodule FakeArtist.Player do
   defstruct(
     seat: -1,
     name: [],
-    role: :player,
+    role: :artist,
     color: "black",
     paint_lines: [],
     voted_for: nil

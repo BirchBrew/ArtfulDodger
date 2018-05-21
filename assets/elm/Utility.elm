@@ -105,9 +105,9 @@ isTrickster model =
     getRole model == Trickster
 
 
-isBasicPlayer : Model -> Bool
-isBasicPlayer model =
-    getRole model == BasicPlayer
+isArtist : Model -> Bool
+isArtist model =
+    getRole model == Artist
 
 
 hasVoted : Model -> Bool

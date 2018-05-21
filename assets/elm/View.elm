@@ -29,6 +29,7 @@ view model =
             ]
         ]
         [ stylesheet
+        , roleView model
         , viewRest model
         ]
 
@@ -107,11 +108,6 @@ viewLobby model =
     lobbyView model
 
 
-viewLobbyTopicTitle : Model -> Html Msg
-viewLobbyTopicTitle model =
-    title H3 [] [ text <| Maybe.withDefault "" model.tableTopic ]
-
-
 lobbyView : Model -> Html Msg
 lobbyView model =
     if model.hasEnteredName then
@@ -140,23 +136,6 @@ startGame model =
         text ""
 
 
-viewGame : Model -> Html Msg
-viewGame model =
-    hero { heroModifiers | size = Large, color = Dark }
-        []
-        [ heroHead []
-            [ container []
-                [ roleView model
-                , playersListView model
-                ]
-            ]
-        , heroBody
-            [ style [ ( "justify-content", "center" ) ]
-            ]
-            (littleStateView model)
-        ]
-
-
 littleStateView : Model -> List (Html Msg)
 littleStateView model =
     case model.state.littleState of
@@ -164,7 +143,10 @@ littleStateView model =
             [ container [] <| choicesView model ]
 
         Draw ->
-            [ container [] [ sharedDrawingSpace model ]
+            [ container
+                [ style []
+                ]
+                [ sharedDrawingSpace model ]
             , br [] []
             , container [] [ viewSubject model ]
             ]
@@ -173,9 +155,9 @@ littleStateView model =
             let
                 extraParts =
                     if isGameMaster model || isTrickster model || hasVoted model == True then
-                        [ text "Wait for all the players to vote" ]
+                        [ title H3 [ coolStyle ] [ text "Wait for all the players to vote" ] ]
                     else
-                        [ text "Click the player you think was the trickster!" ]
+                        [ title H3 [ coolStyle ] [ text "Click the player you think was the trickster!" ] ]
             in
             extraParts ++ [ viewFinishedPainting model ]
 
@@ -224,7 +206,7 @@ viewRest model =
             viewLobby model
 
         Game ->
-            viewGame model
+            viewGameGeneralLayout model
 
         End ->
             div []
@@ -240,15 +222,6 @@ viewGeneralLayout model =
         [ style [ ( "height", "100%" ) ] ]
         [ column
             columnModifiers
-            -- { columnModifiers
-            --     | widths =
-            --         { mobile = Just Bulma.Modifiers.Width4
-            --         , tablet = Just Bulma.Modifiers.Width4
-            --         , desktop = Just Bulma.Modifiers.Width4
-            --         , fullHD = Just Bulma.Modifiers.Width4
-            --         , widescreen = Just Bulma.Modifiers.Width4
-            --         }
-            -- }
             [ id "names"
             , class "is-one-third"
             ]
@@ -259,22 +232,41 @@ viewGeneralLayout model =
                 (displayPlayers model)
             ]
         , column
-            -- { columnModifiers
-            --     | widths =
-            --         { mobile = Just Bulma.Modifiers.Width4
-            --         , tablet = Just Bulma.Modifiers.Width4
-            --         , desktop = Just Bulma.Modifiers.Width4
-            --         , fullHD = Just Bulma.Modifiers.Width4
-            --         , widescreen = Just Bulma.Modifiers.Width4
-            --         }
-            -- }
             columnModifiers
-            [ id "art"
-            , style [ ( "background-color", "white" ) ]
-            ]
+            [ id "art" ]
             [ columns { columnsModifiers | gap = Gap0, display = MobileAndBeyond }
                 [ style [ ( "height", "100%" ) ] ]
-                [ startGame model ]
+                [ -- TODO add collaborative "lobby pad" to draw for fun
+                  startGame model
+                ]
+            ]
+        ]
+
+
+viewGameGeneralLayout : Model -> Html Msg
+viewGameGeneralLayout model =
+    columns { columnsModifiers | gap = Gap0 }
+        [ style [ ( "height", "100%" ) ] ]
+        [ column
+            columnModifiers
+            [ id "names"
+            , class "is-one-third"
+            ]
+            [ columns { columnsModifiers | gap = Gap0, multiline = True }
+                [ style [ ( "height", "100%" ) ]
+                , class "is-mobile"
+                ]
+                (displayPlayers model)
+            ]
+        , column
+            columnModifiers
+            [ id "art" ]
+            [ columns { columnsModifiers | gap = Gap0, display = MobileAndBeyond }
+                [ style
+                    [ ( "height", "100%" )
+                    ]
+                ]
+                [ column columnModifiers [] (littleStateView model) ]
             ]
         ]
 
@@ -316,7 +308,7 @@ getViewBox model =
 
 sharedDrawingSpace : Model -> Html Msg
 sharedDrawingSpace model =
-    drawingSpaceWithRatio (sharedDrawingSpaceAttributes model) 1.0 (drawPainting model) model
+    drawingSpaceWithRatio (sharedDrawingSpaceAttributes model) 0.9 (drawPainting model) model
 
 
 viewFinishedPainting : Model -> Html Msg
@@ -587,7 +579,7 @@ shouldHighlightPlayer model playerId =
                 hasVotedFor model playerId
             else
                 -- tricksters and game masters can't vote
-                isBasicPlayer model && isValidVote playerId model
+                isArtist model && isValidVote playerId model
 
         _ ->
             isPlayerActivePlayer model playerId
@@ -615,6 +607,19 @@ disableContextMenu event =
     None
 
 
+coolStyle : Html.Attribute Msg
+coolStyle =
+    style [ ( "color", "#F5F5F5" ) ]
+
+
 roleView : Model -> Html Msg
 roleView model =
-    title H2 [] <| [ getRole model |> toString |> text ]
+    case model.state.bigState of
+        Lobby ->
+            title H3 [ coolStyle ] [ text <| Maybe.withDefault "" model.tableTopic ]
+
+        Game ->
+            title H3 [ coolStyle ] <| [ getRole model |> toString |> text ]
+
+        _ ->
+            text ""

@@ -22,10 +22,13 @@
   }
 }
 
+/*
 div {
   border: 1px solid black;
-}
+} */
 
+html,
 body {
-  background-color: black;
+  background-color: #363636;
+  overflow: hidden;
 }
